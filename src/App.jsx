@@ -99,12 +99,31 @@ export default function App() {
   const [selectedMatch, setSelectedMatch] = useState(null);
   const [seasonHistory, setSeasonHistory] = useState([]);
 
+  // Calculate ranks for all leagues to store in history
+  const calculateRankEntry = (currentTeams, phaseLabel) => {
+    const entry = { phase: phaseLabel };
+    LEAGUES.forEach(leagueId => {
+      const leagueTeams = currentTeams.filter(t => t.league_id === leagueId);
+      const sorted = sortByStandings(leagueTeams);
+      sorted.forEach((t, idx) => {
+        entry[t.id] = idx + 1;
+      });
+    });
+    return entry;
+  };
+
   const [selectedLeague, setSelectedLeague] = useState("L_KR");
   const [favorites, setFavorites] = useState([]);
-  const [eloHistory, setEloHistory] = useState([{ phase: 0, ...INIT_TEAMS.reduce((acc, t) => ({ ...acc, [t.id]: t.elo }), {}) }]);
+  const [eloHistory, setEloHistory] = useState([]);
   const [visibleGraphTeams, setVisibleGraphTeams] = useState({});
 
   useEffect(() => {
+    // ===== Initialize App State =====
+    const newEloEntry = calculateRankEntry(INIT_TEAMS, 0);
+    setEloHistory([newEloEntry]);
+    
+    prepareNatSchedules();
+
     // === Seeded Pot Draw for EU (4 groups) ===
     const groups = { EU: {A:[], B:[], C:[], D:[]}, APAC: {A:[], B:[], C:[]}, AMERICA: {North:[], South:[]} };
     const euTeams = natTeams.filter(t => t.region === 'EU').sort((a,b) => b.elo - a.elo);
@@ -234,13 +253,21 @@ export default function App() {
       // Deep clone the bracket template
       const bracket = JSON.parse(JSON.stringify(template));
       
+      const teamSeedMap = {};
+      
       if (bracketType === 'NA') {
         // NA: separate W (WEST) and E (EAST) conferences
         const west = sortByStandings(leagueTeams.filter(t => t.division === 'WEST'));
         const east = sortByStandings(leagueTeams.filter(t => t.division === 'EAST'));
         const seedMap = {};
-        west.forEach((t, i) => { seedMap['W' + (i + 1)] = t.id; });
-        east.forEach((t, i) => { seedMap['E' + (i + 1)] = t.id; });
+        west.forEach((t, i) => { 
+          seedMap['W' + (i + 1)] = t.id; 
+          teamSeedMap[t.id] = 'W' + (i + 1);
+        });
+        east.forEach((t, i) => { 
+          seedMap['E' + (i + 1)] = t.id; 
+          teamSeedMap[t.id] = 'E' + (i + 1);
+        });
         
         bracket.forEach(m => {
           if (typeof m.seedA === 'string' && !m.seedA.includes('.')) {
@@ -258,8 +285,14 @@ export default function App() {
         const dragon = sortByStandings(leagueTeams.filter(t => t.division === 'DRAGON'));
         const phoenix = sortByStandings(leagueTeams.filter(t => t.division === 'PHOENIX'));
         const seedMap = {};
-        dragon.forEach((t, i) => { seedMap['D' + (i + 1)] = t.id; });
-        phoenix.forEach((t, i) => { seedMap['P' + (i + 1)] = t.id; });
+        dragon.forEach((t, i) => { 
+          seedMap['D' + (i + 1)] = t.id; 
+          teamSeedMap[t.id] = 'D' + (i + 1);
+        });
+        phoenix.forEach((t, i) => { 
+          seedMap['P' + (i + 1)] = t.id; 
+          teamSeedMap[t.id] = 'P' + (i + 1);
+        });
         
         bracket.forEach(m => {
           if (typeof m.seedA === 'string' && !m.seedA.includes('.')) {
@@ -275,6 +308,10 @@ export default function App() {
       } else {
         // SMALL (6 teams from 8/10) or LARGE (8 teams from 12): numeric seeds
         const sorted = sortByStandings(leagueTeams);
+        sorted.forEach((t, i) => {
+          teamSeedMap[t.id] = '#' + (i + 1);
+        });
+        
         bracket.forEach(m => {
           if (typeof m.seedA === 'number') {
             m.teamAId = sorted[m.seedA - 1]?.id || null;
@@ -301,7 +338,7 @@ export default function App() {
         }
       });
       
-      newPOState[leagueId] = { bracket, currentMD: 0 };
+      newPOState[leagueId] = { bracket, currentMD: 0, teamSeedMap };
     });
     
     setPlayoffState(newPOState);
@@ -404,9 +441,8 @@ export default function App() {
           }
         }
       });
-      const newEloEntry = { phase: activePhaseObj.id };
-      updatedTeams.forEach(t => { newEloEntry[t.id] = t.elo; });
-      setEloHistory(prev => [...prev, newEloEntry]);
+      const newRankEntry = calculateRankEntry(updatedTeams, activePhaseObj.id);
+      setEloHistory(prev => [...prev, newRankEntry]);
 
     } else if (activePhaseObj.type === "IQ_DETAILED") {
       // IQ: simulate the matchup for this matchday
@@ -624,12 +660,18 @@ export default function App() {
           if (!matchNode.teamAId && typeof matchNode.seedA === 'string' && matchNode.seedA.includes('.')) {
             const [refId, outcome] = matchNode.seedA.split('.');
             const refMatch = bracket.find(m => m.id === refId);
-            if (refMatch) matchNode.teamAId = outcome === 'winner' ? refMatch.winnerId : refMatch.loserId;
+            if (refMatch && ((outcome === 'winner' && refMatch.winnerId) || (outcome === 'loser' && refMatch.loserId))) {
+              matchNode.teamAId = outcome === 'winner' ? refMatch.winnerId : refMatch.loserId;
+              if (poData.teamSeedMap[matchNode.teamAId]) matchNode.seedLabel_A = poData.teamSeedMap[matchNode.teamAId];
+            }
           }
           if (!matchNode.teamBId && typeof matchNode.seedB === 'string' && matchNode.seedB.includes('.')) {
             const [refId, outcome] = matchNode.seedB.split('.');
             const refMatch = bracket.find(m => m.id === refId);
-            if (refMatch) matchNode.teamBId = outcome === 'winner' ? refMatch.winnerId : refMatch.loserId;
+            if (refMatch && ((outcome === 'winner' && refMatch.winnerId) || (outcome === 'loser' && refMatch.loserId))) {
+              matchNode.teamBId = outcome === 'winner' ? refMatch.winnerId : refMatch.loserId;
+              if (poData.teamSeedMap[matchNode.teamBId]) matchNode.seedLabel_B = poData.teamSeedMap[matchNode.teamBId];
+            }
           }
           
           if (!matchNode.teamAId || !matchNode.teamBId) return;
@@ -756,9 +798,8 @@ export default function App() {
       
       setPlayoffState(updatedPO);
       
-      const newEloEntry = { phase: activePhaseObj.id + "_MD" + currentMD };
-      updatedTeams.forEach(t => { newEloEntry[t.id] = t.elo; });
-      setEloHistory(prev => [...prev, newEloEntry]);
+      const newRankEntry = calculateRankEntry(updatedTeams, activePhaseObj.id + "_MD" + currentMD);
+      setEloHistory(prev => [...prev, newRankEntry]);
 
     } else {
       newNews.push({ id: Math.random(), text: "[시스템] " + activePhaseObj.name + " 진행 완료.", type: "info" });
@@ -823,7 +864,7 @@ export default function App() {
           </div>
           <button 
             onClick={processTransition}
-            disabled={phaseIdx >= 16}
+            disabled={phaseIdx >= PHASES.length - 1}
             className={"px-6 py-2 rounded-xl font-bold flex items-center gap-2 transition-all transform hover:scale-105 shadow-[0_0_20px_rgba(79,70,229,0.3)] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed " + btnClass}
           >
             {isPhaseCompleted ? <ArrowRight className="w-4 h-4" /> : <Play className="w-4 h-4" />} {buttonLabel}

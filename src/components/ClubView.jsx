@@ -219,11 +219,11 @@ export default function ClubView({
         </div>
       </div>
       
-      {/* Elo Rating Graph Section (Full Width Bottom) */}
+      {/* Rank History Graph Section (Full Width Bottom) */}
       <div className="lg:col-span-12 mt-2 bg-slate-900/60 backdrop-blur-lg border border-white/5 rounded-2xl p-5 shadow-2xl relative z-10">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-bold flex items-center gap-2 text-white">
-            <TrendingUp className="w-5 h-5 text-indigo-400" /> Elo 변동 추이 
+            <TrendingUp className="w-5 h-5 text-indigo-400" /> 순위 변동 추이 
           </h2>
           <div className="flex gap-2 flex-wrap justify-end max-w-[70%] overflow-auto max-h-12 custom-scrollbar">
             {graphTeams.map(team => (
@@ -243,7 +243,7 @@ export default function ClubView({
             <LineChart data={eloHistory} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
               <XAxis dataKey="phase" stroke="#94a3b8" tickFormatter={(tick) => `P${tick}`} />
-              <YAxis stroke="#94a3b8" domain={['dataMin - 30', 'dataMax + 30']} />
+              <YAxis stroke="#94a3b8" reversed={true} domain={[1, 'dataMax']} tickCount={6} allowDecimals={false} />
               <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f8fafc' }} />
               {graphTeams.map((team) => (
                 visibleGraphTeams[team.id] && (

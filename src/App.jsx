@@ -702,6 +702,26 @@ export default function App() {
             matchNode.partialMomentumB += setResult.momentum.B;
             matchNode.winnerId = setResult.winnerId;
             matchNode.loserId = setResult.loserId;
+          } else if (fmt === 'Bo5_Single') {
+            // Bo5 played fully in a single MatchDay
+            const winsNeeded = 3;
+            while (matchNode.partialSetWinsA < winsNeeded && matchNode.partialSetWinsB < winsNeeded) {
+              const isDerby = Math.random() < 0.05;
+              const setResult = simulateSet(teamA, teamB, newMeta, isDerby);
+              matchNode.setsPlayed.push(setResult);
+              matchNode.partialMomentumA += setResult.momentum.A;
+              matchNode.partialMomentumB += setResult.momentum.B;
+              
+              if (setResult.winnerId === teamA.id) matchNode.partialSetWinsA++;
+              else matchNode.partialSetWinsB++;
+            }
+            if (matchNode.partialSetWinsA >= winsNeeded) {
+              matchNode.winnerId = teamA.id;
+              matchNode.loserId = teamB.id;
+            } else {
+              matchNode.winnerId = teamB.id;
+              matchNode.loserId = teamA.id;
+            }
           } else if (fmt === 'Bo2_ADV') {
             // Bo2_ADV: MD1 = game 1 (advantage team starts 1-0)
             // If advantage team wins game 1 => 2-0, series over

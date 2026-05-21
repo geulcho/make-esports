@@ -65,7 +65,7 @@ export default function PlayoffView({ teams, playoffState, LEAGUES }) {
     const isInProgress = !isDone && match.score && match.score !== '0-0' && (match.partialSetWinsA > 0 || match.partialSetWinsB > 0);
 
     let displayScore = null;
-    if (isDone && match.momentumScore) {
+    if (isDone && (match.format === 'Bo3' || match.format === 'Bo5' || match.format === 'Bo5_Single' || match.format === 'Bo2_ADV')) {
       displayScore = (
         <div className="flex flex-col items-center">
           <span className="font-black text-lg leading-tight">{match.score}</span>

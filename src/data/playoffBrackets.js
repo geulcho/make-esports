@@ -49,38 +49,38 @@ export const BRACKET_CN = [
 
 // ========== 8/10팀 리그 — 6팀 진출 ==========
 export const BRACKET_SMALL = [
-  // Round 1: 2 matches, Bo1
-  { id: "1-1", round: 1, label: "1라운드 1경기", seedA: 3, seedB: 6, format: "Bo1", mdSchedule: [3] },
-  { id: "1-2", round: 1, label: "1라운드 2경기", seedA: 4, seedB: 5, format: "Bo1", mdSchedule: [4] },
-  // Round 2: 2 matches, Bo1 (top seeds enter)
-  { id: "2-1", round: 2, label: "2라운드 1경기", seedA: 1, seedB: "1-2.winner", format: "Bo1", mdSchedule: [6] },
-  { id: "2-2", round: 2, label: "2라운드 2경기", seedA: 2, seedB: "1-1.winner", format: "Bo1", mdSchedule: [7] },
-  // Round 3: 2 matches, Bo1 (winners bracket final + elimination)
-  { id: "3-1", round: 3, label: "3라운드 1경기 (승자전)", seedA: "2-1.winner", seedB: "2-2.winner", format: "Bo1", mdSchedule: [9] },
-  { id: "3-2", round: 3, label: "3라운드 2경기 (패자전)", seedA: "2-1.loser", seedB: "2-2.loser", format: "Bo1", mdSchedule: [10] },
-  // Round 4: 1 match, Bo1 (qualification match)
-  { id: "4-1", round: 4, label: "4라운드 (재도전)", seedA: "3-1.loser", seedB: "3-2.winner", format: "Bo1", mdSchedule: [14] },
-  // Round 5: Grand Final, Bo1
-  { id: "5-1", round: 5, label: "결승", seedA: "3-1.winner", seedB: "4-1.winner", format: "Bo1", mdSchedule: [15] },
+  // Round 1: 2 matches, Bo5_Single
+  { id: "1-1", round: 1, label: "1라운드 1경기", seedA: 3, seedB: 6, format: "Bo5_Single", mdSchedule: [3] },
+  { id: "1-2", round: 1, label: "1라운드 2경기", seedA: 4, seedB: 5, format: "Bo5_Single", mdSchedule: [4] },
+  // Round 2: 2 matches, Bo5_Single (top seeds enter)
+  { id: "2-1", round: 2, label: "2라운드 1경기", seedA: 1, seedB: "1-2.winner", format: "Bo5_Single", mdSchedule: [6] },
+  { id: "2-2", round: 2, label: "2라운드 2경기", seedA: 2, seedB: "1-1.winner", format: "Bo5_Single", mdSchedule: [7] },
+  // Round 3: 2 matches, Bo5_Single (winners bracket final + elimination)
+  { id: "3-1", round: 3, label: "3라운드 1경기 (승자전)", seedA: "2-1.winner", seedB: "2-2.winner", format: "Bo5_Single", mdSchedule: [9] },
+  { id: "3-2", round: 3, label: "3라운드 2경기 (패자전)", seedA: "2-1.loser", seedB: "2-2.loser", format: "Bo5_Single", mdSchedule: [10] },
+  // Round 4: 1 match, Bo5_Single (qualification match)
+  { id: "4-1", round: 4, label: "4라운드 (재도전)", seedA: "3-1.loser", seedB: "3-2.winner", format: "Bo5_Single", mdSchedule: [14] },
+  // Round 5: Grand Final, Bo5_Single
+  { id: "5-1", round: 5, label: "결승", seedA: "3-1.winner", seedB: "4-1.winner", format: "Bo5_Single", mdSchedule: [15] },
 ];
 
 // ========== 12팀 리그 — 8팀 진출 ==========
 export const BRACKET_LARGE = [
-  // Round 1: 4 matches, Bo1
-  { id: "1-1", round: 1, label: "1라운드 1경기", seedA: 1, seedB: 4, format: "Bo1", mdSchedule: [2] },
-  { id: "1-2", round: 1, label: "1라운드 2경기", seedA: 2, seedB: 3, format: "Bo1", mdSchedule: [3] },
-  { id: "1-3", round: 1, label: "1라운드 3경기", seedA: 5, seedB: 8, format: "Bo1", mdSchedule: [4] },
-  { id: "1-4", round: 1, label: "1라운드 4경기", seedA: 6, seedB: 7, format: "Bo1", mdSchedule: [5] },
-  // Round 2: 3 matches, Bo1
-  { id: "2-1", round: 2, label: "2라운드 1경기", seedA: "1-1.loser", seedB: "1-4.winner", format: "Bo1", mdSchedule: [8] },
-  { id: "2-2", round: 2, label: "2라운드 2경기", seedA: "1-2.loser", seedB: "1-3.winner", format: "Bo1", mdSchedule: [9] },
-  { id: "2-3", round: 2, label: "2라운드 3경기 (승자전)", seedA: "1-1.winner", seedB: "1-2.winner", format: "Bo1", mdSchedule: [10] },
-  // Round 3: 1 match, Bo1
-  { id: "3-1", round: 3, label: "3라운드 (패자전)", seedA: "2-1.winner", seedB: "2-2.winner", format: "Bo1", mdSchedule: [13] },
-  // Round 4: 1 match, Bo1
-  { id: "4-1", round: 4, label: "4라운드 (재도전)", seedA: "2-3.loser", seedB: "3-1.winner", format: "Bo1", mdSchedule: [14] },
-  // Round 5: Grand Final, Bo1
-  { id: "5-1", round: 5, label: "결승", seedA: "2-3.winner", seedB: "4-1.winner", format: "Bo1", mdSchedule: [15] },
+  // Round 1: 4 matches, Bo5_Single
+  { id: "1-1", round: 1, label: "1라운드 1경기", seedA: 1, seedB: 4, format: "Bo5_Single", mdSchedule: [2] },
+  { id: "1-2", round: 1, label: "1라운드 2경기", seedA: 2, seedB: 3, format: "Bo5_Single", mdSchedule: [3] },
+  { id: "1-3", round: 1, label: "1라운드 3경기", seedA: 5, seedB: 8, format: "Bo5_Single", mdSchedule: [4] },
+  { id: "1-4", round: 1, label: "1라운드 4경기", seedA: 6, seedB: 7, format: "Bo5_Single", mdSchedule: [5] },
+  // Round 2: 3 matches, Bo5_Single
+  { id: "2-1", round: 2, label: "2라운드 1경기", seedA: "1-1.loser", seedB: "1-4.winner", format: "Bo5_Single", mdSchedule: [8] },
+  { id: "2-2", round: 2, label: "2라운드 2경기", seedA: "1-2.loser", seedB: "1-3.winner", format: "Bo5_Single", mdSchedule: [9] },
+  { id: "2-3", round: 2, label: "2라운드 3경기 (승자전)", seedA: "1-1.winner", seedB: "1-2.winner", format: "Bo5_Single", mdSchedule: [10] },
+  // Round 3: 1 match, Bo5_Single
+  { id: "3-1", round: 3, label: "3라운드 (패자전)", seedA: "2-1.winner", seedB: "2-2.winner", format: "Bo5_Single", mdSchedule: [13] },
+  // Round 4: 1 match, Bo5_Single
+  { id: "4-1", round: 4, label: "4라운드 (재도전)", seedA: "2-3.loser", seedB: "3-1.winner", format: "Bo5_Single", mdSchedule: [14] },
+  // Round 5: Grand Final, Bo5_Single
+  { id: "5-1", round: 5, label: "결승", seedA: "2-3.winner", seedB: "4-1.winner", format: "Bo5_Single", mdSchedule: [15] },
 ];
 
 // ========== 리그 → 브라켓 매핑 ==========

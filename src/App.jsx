@@ -3,11 +3,13 @@ import { Calendar, ArrowRight, Play, CheckCircle2 } from 'lucide-react';
 import clubsData from './data/clubs_database.json';
 import natData from './data/nat_database.json';
 
-import { getRandomMeta, simulateBo3Match, simulateBo5Match, generateRoundRobinSchedule } from './utils/engine';
+import { getRandomMeta, simulateBo1Match, simulateBo2AdvMatch, simulateBo3Match, simulateBo5Match, generateRoundRobinSchedule } from './utils/engine';
+import { getLeagueBracketType, getBracketTemplate } from './data/playoffBrackets';
 
 import GNB from './components/GNB';
 import ClubView from './components/ClubView';
 import NationalView from './components/NationalView';
+import PlayoffView from './components/PlayoffView';
 import RankingView from './components/RankingView';
 import LeagueCoefficientsView from './components/LeagueCoefficientsView';
 import InfoView from './components/InfoView';
@@ -21,7 +23,7 @@ const PHASES = [
   { id: 3, name: "P3: 인터매치 1 (국대)", type: "NAT_DETAILED", maxSubPhase: 7 },
   { id: 4, name: "P4: 오프닝 페이즈 3", type: "JUMP", matches: { 8: 5, 10: 4, 12: 5, 16: 5, 24: 8 } },
   { id: 5, name: "P5: 오프닝 페이즈 4", type: "JUMP", matches: { 8: 6, 10: 5, 12: 6, 16: 6, 24: 9 } },
-  { id: 6, name: "P6: 오프닝 플레이오프", type: "DETAILED" },
+  { id: 6, name: "P6: 오프닝 플레이오프", type: "PO_DETAILED", maxSubPhase: 16 },
   { id: 7, name: "P7: MSM (국제대회)", type: "DETAILED", archive: "오프닝 시즌" },
   { id: 8, name: "P8: 인터매치 2 (국대)", type: "NAT_DETAILED", maxSubPhase: 7 },
   { id: 9, name: "P9: 레귤러 페이즈 1", type: "JUMP", matches: { 8: 5, 10: 4, 12: 5, 16: 5, 24: 8 } },
@@ -29,7 +31,7 @@ const PHASES = [
   { id: 11, name: "P11: 인터매치 3 (IQ)", type: "IQ_DETAILED", maxSubPhase: 5 },
   { id: 12, name: "P12: 레귤러 페이즈 3", type: "JUMP", matches: { 8: 5, 10: 4, 12: 5, 16: 5, 24: 8 } },
   { id: 13, name: "P13: 레귤러 페이즈 4", type: "JUMP", matches: { 8: 6, 10: 5, 12: 6, 16: 6, 24: 9 } },
-  { id: 14, name: "P14: 레귤러 플레이오프", type: "DETAILED" },
+  { id: 14, name: "P14: 레귤러 플레이오프", type: "PO_DETAILED", maxSubPhase: 16 },
   { id: 15, name: "P15: WT & VSC (국제대회)", type: "DETAILED", archive: "레귤러 시즌" },
   { id: 16, name: "P16: WE / 비시즌", type: "DETAILED" }
 ];
@@ -72,6 +74,9 @@ export default function App() {
   const [meaStage2, setMeaStage2] = useState([]); // 8 matchups
   const [meaFinal, setMeaFinal] = useState([]); // Single-elim bracket (4 QF + 2 SF + 1 F)
   const [meaTop12Ids, setMeaTop12Ids] = useState([]);
+
+  // Playoff state: { L_KR: { bracket: [...], currentMD: 0 }, ... }
+  const [playoffState, setPlayoffState] = useState({});
 
   const [phaseIdx, setPhaseIdx] = useState(0);
   const [subPhase, setSubPhase] = useState(0); 
@@ -207,22 +212,112 @@ export default function App() {
     }
     return matchups;
   };
+  // ===== Playoff Initialization =====
+  const initializePlayoffs = (currentTeams) => {
+    const newPOState = {};
+    
+    LEAGUES.forEach(leagueId => {
+      const bracketType = getLeagueBracketType(leagueId);
+      const template = getBracketTemplate(bracketType);
+      const leagueTeams = currentTeams.filter(t => t.league_id === leagueId);
+      
+      // Deep clone the bracket template
+      const bracket = JSON.parse(JSON.stringify(template));
+      
+      if (bracketType === 'NA') {
+        // NA: separate W (WEST) and E (EAST) conferences
+        const west = sortByStandings(leagueTeams.filter(t => t.division === 'WEST'));
+        const east = sortByStandings(leagueTeams.filter(t => t.division === 'EAST'));
+        const seedMap = {};
+        west.forEach((t, i) => { seedMap['W' + (i + 1)] = t.id; });
+        east.forEach((t, i) => { seedMap['E' + (i + 1)] = t.id; });
+        
+        bracket.forEach(m => {
+          if (typeof m.seedA === 'string' && !m.seedA.includes('.')) {
+            m.teamAId = seedMap[m.seedA] || null;
+            m.seedLabel_A = m.seedA;
+          }
+          if (typeof m.seedB === 'string' && !m.seedB.includes('.')) {
+            m.teamBId = seedMap[m.seedB] || null;
+            m.seedLabel_B = m.seedB;
+          }
+        });
+        
+      } else if (bracketType === 'CN') {
+        // CN: separate D (DRAGON) and P (PHOENIX) divisions
+        const dragon = sortByStandings(leagueTeams.filter(t => t.division === 'DRAGON'));
+        const phoenix = sortByStandings(leagueTeams.filter(t => t.division === 'PHOENIX'));
+        const seedMap = {};
+        dragon.forEach((t, i) => { seedMap['D' + (i + 1)] = t.id; });
+        phoenix.forEach((t, i) => { seedMap['P' + (i + 1)] = t.id; });
+        
+        bracket.forEach(m => {
+          if (typeof m.seedA === 'string' && !m.seedA.includes('.')) {
+            m.teamAId = seedMap[m.seedA] || null;
+            m.seedLabel_A = m.seedA;
+          }
+          if (typeof m.seedB === 'string' && !m.seedB.includes('.')) {
+            m.teamBId = seedMap[m.seedB] || null;
+            m.seedLabel_B = m.seedB;
+          }
+        });
+        
+      } else {
+        // SMALL (6 teams from 8/10) or LARGE (8 teams from 12): numeric seeds
+        const sorted = sortByStandings(leagueTeams);
+        bracket.forEach(m => {
+          if (typeof m.seedA === 'number') {
+            m.teamAId = sorted[m.seedA - 1]?.id || null;
+            m.seedLabel_A = '#' + m.seedA;
+          }
+          if (typeof m.seedB === 'number') {
+            m.teamBId = sorted[m.seedB - 1]?.id || null;
+            m.seedLabel_B = '#' + m.seedB;
+          }
+        });
+      }
+      
+      // Initialize all match results
+      bracket.forEach(m => {
+        m.winnerId = null;
+        m.loserId = null;
+        m.score = null;
+        // Set seedLabel for dynamic references
+        if (typeof m.seedA === 'string' && m.seedA.includes('.')) {
+          m.seedLabel_A = m.seedA.replace('.winner', ' 승자').replace('.loser', ' 패자');
+        }
+        if (typeof m.seedB === 'string' && m.seedB.includes('.')) {
+          m.seedLabel_B = m.seedB.replace('.winner', ' 승자').replace('.loser', ' 패자');
+        }
+      });
+      
+      newPOState[leagueId] = { bracket, currentMD: 0 };
+    });
+    
+    setPlayoffState(newPOState);
+  };
 
   const processTransition = () => {
     const currentPhaseObj = PHASES[phaseIdx];
-    const isNatDetailed = currentPhaseObj.type === "NAT_DETAILED" || currentPhaseObj.type === "IQ_DETAILED";
+    const isStepByStep = currentPhaseObj.type === "NAT_DETAILED" || currentPhaseObj.type === "IQ_DETAILED" || currentPhaseObj.type === "PO_DETAILED";
     
     if (isPhaseCompleted) {
-      if (isNatDetailed && subPhase < currentPhaseObj.maxSubPhase) {
+      if (isStepByStep && subPhase < currentPhaseObj.maxSubPhase) {
         setSubPhase(subPhase + 1);
       } else {
         const nextIdx = phaseIdx + 1;
         setPhaseIdx(nextIdx);
         const nextPhase = PHASES[nextIdx];
-        setSubPhase(nextPhase?.type === "NAT_DETAILED" || nextPhase?.type === "IQ_DETAILED" ? 1 : 0);
+        const nextIsStep = nextPhase?.type === "NAT_DETAILED" || nextPhase?.type === "IQ_DETAILED" || nextPhase?.type === "PO_DETAILED";
+        setSubPhase(nextIsStep ? 1 : 0);
         
         if (nextPhase?.type === "NAT_DETAILED") {
           prepareNatSchedules();
+        }
+        
+        // Initialize playoffs when entering PO_DETAILED phase
+        if (nextPhase?.type === "PO_DETAILED") {
+          initializePlayoffs(teams);
         }
         
         if (nextPhase?.id === 11) {
@@ -498,6 +593,88 @@ export default function App() {
         
         setMeaFinal(fin);
       }
+    } else if (activePhaseObj.type === "PO_DETAILED") {
+      // ===== Playoff MD-by-MD Execution =====
+      const currentMD = subPhase;
+      newNews.push({ id: Math.random(), text: "[이벤트] " + activePhaseObj.name + " 매치데이 " + currentMD + " 경기 진행 중.", type: "info" });
+      
+      const updatedPO = JSON.parse(JSON.stringify(playoffState));
+      
+      LEAGUES.forEach(leagueId => {
+        const poData = updatedPO[leagueId];
+        if (!poData) return;
+        const bracket = poData.bracket;
+        poData.currentMD = currentMD;
+        
+        // Find matches scheduled for this MD
+        const matchesThisMD = bracket.filter(m => !m.winnerId && m.mdSchedule && m.mdSchedule.includes(currentMD));
+        
+        matchesThisMD.forEach(matchNode => {
+          // Resolve dynamic team references
+          if (!matchNode.teamAId && typeof matchNode.seedA === 'string' && matchNode.seedA.includes('.')) {
+            const [refId, outcome] = matchNode.seedA.split('.');
+            const refMatch = bracket.find(m => m.id === refId);
+            if (refMatch) matchNode.teamAId = outcome === 'winner' ? refMatch.winnerId : refMatch.loserId;
+          }
+          if (!matchNode.teamBId && typeof matchNode.seedB === 'string' && matchNode.seedB.includes('.')) {
+            const [refId, outcome] = matchNode.seedB.split('.');
+            const refMatch = bracket.find(m => m.id === refId);
+            if (refMatch) matchNode.teamBId = outcome === 'winner' ? refMatch.winnerId : refMatch.loserId;
+          }
+          
+          // Skip if teams not yet determined
+          if (!matchNode.teamAId || !matchNode.teamBId) return;
+          
+          const teamA = updatedTeams.find(t => t.id === matchNode.teamAId);
+          const teamB = updatedTeams.find(t => t.id === matchNode.teamBId);
+          if (!teamA || !teamB) return;
+          
+          // For multi-game series (Bo3/Bo5), only play if this is the right MD in the schedule
+          // Bo2_ADV: MD1 = game 1, MD2 = game 2 (if needed) - simulate all at once on first MD
+          // Bo3: simulate on first scheduled MD
+          // Bo5: simulate on first scheduled MD
+          // Bo1: single game
+          const isFirstMD = matchNode.mdSchedule[0] === currentMD;
+          if (!isFirstMD) return; // Only simulate on the first scheduled MD
+          
+          let match;
+          if (matchNode.format === 'Bo2_ADV') {
+            match = simulateBo2AdvMatch(teamA, teamB, newMeta);
+          } else if (matchNode.format === 'Bo3') {
+            match = simulateBo3Match(teamA, teamB, newMeta);
+          } else if (matchNode.format === 'Bo5') {
+            match = simulateBo5Match(teamA, teamB, newMeta);
+          } else {
+            match = simulateBo1Match(teamA, teamB, newMeta);
+          }
+          
+          matchNode.winnerId = match.winnerId;
+          matchNode.loserId = match.loserId;
+          matchNode.score = match.setWinsA + "-" + match.setWinsB;
+          
+          // Update team stats
+          const tA = updatedTeams.find(t => t.id === teamA.id);
+          const tB = updatedTeams.find(t => t.id === teamB.id);
+          tA.match_count++; tB.match_count++;
+          tA.set_wins += match.setWinsA; tA.set_losses += match.setWinsB; tA.score_diff += (match.totalMomentumA - match.totalMomentumB);
+          tB.set_wins += match.setWinsB; tB.set_losses += match.setWinsA; tB.score_diff += (match.totalMomentumB - match.totalMomentumA);
+          const winner = updatedTeams.find(t => t.id === match.winnerId);
+          const loser = updatedTeams.find(t => t.id === match.loserId);
+          winner.wins++; winner.streak = winner.streak > 0 ? winner.streak + 1 : 1;
+          loser.losses++; loser.streak = loser.streak < 0 ? loser.streak - 1 : -1;
+          const eloChange = Math.max(5, Math.round(32 * (1 - (1 / (1 + Math.pow(10, (loser.elo - winner.elo) / 400))))));
+          winner.elo += eloChange; loser.elo -= eloChange;
+          
+          allMatchesThisPhase.push({ id: "PO-" + leagueId + "-" + matchNode.id + "-MD" + currentMD, phase: leagueId + " PO " + matchNode.label, ...match });
+        });
+      });
+      
+      setPlayoffState(updatedPO);
+      
+      const newEloEntry = { phase: activePhaseObj.id + "_MD" + currentMD };
+      updatedTeams.forEach(t => { newEloEntry[t.id] = t.elo; });
+      setEloHistory(prev => [...prev, newEloEntry]);
+
     } else {
       newNews.push({ id: Math.random(), text: "[시스템] " + activePhaseObj.name + " 진행 완료.", type: "info" });
     }
@@ -513,26 +690,29 @@ export default function App() {
   const toggleFavorite = (id) => setFavorites(prev => prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]);
 
   const currentPhaseObj = PHASES[phaseIdx];
-  const isNatDetailed = currentPhaseObj.type === "NAT_DETAILED" || currentPhaseObj.type === "IQ_DETAILED";
+  const isStepByStep = currentPhaseObj.type === "NAT_DETAILED" || currentPhaseObj.type === "IQ_DETAILED" || currentPhaseObj.type === "PO_DETAILED";
+  const isPO = currentPhaseObj.type === "PO_DETAILED";
   
-  const phaseLabel = isNatDetailed
+  const phaseLabel = isStepByStep
     ? currentPhaseObj.name + " (MD " + subPhase + "/" + currentPhaseObj.maxSubPhase + ")"
     : currentPhaseObj.name;
   
   let buttonLabel = "";
   if (isPhaseCompleted) {
-     if (isNatDetailed && subPhase < currentPhaseObj.maxSubPhase) buttonLabel = "매치데이 " + (subPhase+1) + " 진입";
+     if (isStepByStep && subPhase < currentPhaseObj.maxSubPhase) buttonLabel = "매치데이 " + (subPhase+1) + " 진입";
      else buttonLabel = "다음 페이즈 진입";
   } else {
-     if (isNatDetailed) buttonLabel = "진행 (Matchday " + subPhase + " 연산)";
+     if (isStepByStep) buttonLabel = "진행 (Matchday " + subPhase + " 연산)";
      else buttonLabel = "진행 (" + currentPhaseObj.name + " 연산)";
   }
 
   const btnClass = isPhaseCompleted 
     ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white' 
-    : isNatDetailed 
-      ? 'bg-gradient-to-r from-pink-600 to-orange-600 hover:from-pink-500 hover:to-orange-500 text-white' 
-      : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white';
+    : isPO
+      ? 'bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 text-white'
+      : isStepByStep 
+        ? 'bg-gradient-to-r from-pink-600 to-orange-600 hover:from-pink-500 hover:to-orange-500 text-white' 
+        : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white';
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans overflow-hidden flex flex-col relative">
@@ -568,7 +748,8 @@ export default function App() {
 
       <div className="flex-1 overflow-y-auto relative z-10">
         <div className="max-w-7xl mx-auto p-6">
-          {activeTab === 'club' && <ClubView teams={teams} selectedLeague={selectedLeague} setSelectedLeague={setSelectedLeague} LEAGUES={LEAGUES} favorites={favorites} toggleFavorite={toggleFavorite} news={news} history={history} setSelectedMatch={setSelectedMatch} eloHistory={eloHistory} visibleGraphTeams={visibleGraphTeams} setVisibleGraphTeams={setVisibleGraphTeams} />}
+          {activeTab === 'club' && !isPO && <ClubView teams={teams} selectedLeague={selectedLeague} setSelectedLeague={setSelectedLeague} LEAGUES={LEAGUES} favorites={favorites} toggleFavorite={toggleFavorite} news={news} history={history} setSelectedMatch={setSelectedMatch} eloHistory={eloHistory} visibleGraphTeams={visibleGraphTeams} setVisibleGraphTeams={setVisibleGraphTeams} />}
+          {(activeTab === 'club' && isPO) && <PlayoffView teams={teams} playoffState={playoffState} LEAGUES={LEAGUES} />}
           {activeTab === 'national' && <NationalView natTeams={natTeams} natGroups={natGroups} meaStage1={meaStage1} meaStage2={meaStage2} meaFinal={meaFinal} iqMatchups={iqMatchups} />}
           {activeTab === 'clubRank' && <RankingView title="글로벌 클럽 랭킹" type="club" teams={teams} icon={null} />}
           {activeTab === 'natRank' && <RankingView title="글로벌 국가대표 랭킹" type="national" teams={natTeams} icon={null} />}

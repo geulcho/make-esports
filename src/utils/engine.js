@@ -150,6 +150,61 @@ const simulateMatch = (teamA, teamB, currentMeta, maxSets) => {
 export const simulateBo3Match = (teamA, teamB, currentMeta) => simulateMatch(teamA, teamB, currentMeta, 3);
 export const simulateBo5Match = (teamA, teamB, currentMeta) => simulateMatch(teamA, teamB, currentMeta, 5);
 
+// Bo1: single set match
+export const simulateBo1Match = (teamA, teamB, currentMeta) => {
+  const isDerby = Math.random() < 0.05;
+  const setResult = simulateSet(teamA, teamB, currentMeta, isDerby);
+  return {
+    teamA, teamB,
+    winnerId: setResult.winnerId,
+    loserId: setResult.loserId,
+    setWinsA: setResult.winnerId === teamA.id ? 1 : 0,
+    setWinsB: setResult.winnerId === teamB.id ? 1 : 0,
+    totalMomentumA: setResult.momentum.A,
+    totalMomentumB: setResult.momentum.B,
+    sets: [{ setNum: 1, winnerId: setResult.winnerId, momentum: setResult.momentum, logs: setResult.logs }],
+    isDerby,
+    format: "Bo1"
+  };
+};
+
+// Bo2 with 1-match advantage for teamA:
+// Game 1: if teamA wins => series over (teamA wins 2-0 conceptually)
+// Game 1: if teamB wins => tied 1-1, play Game 2 as decider
+export const simulateBo2AdvMatch = (teamA, teamB, currentMeta) => {
+  const isDerby = Math.random() < 0.05;
+  // Game 1
+  const set1 = simulateSet(teamA, teamB, currentMeta, isDerby);
+  const sets = [{ setNum: 1, winnerId: set1.winnerId, momentum: set1.momentum, logs: set1.logs }];
+  
+  if (set1.winnerId === teamA.id) {
+    // Advantage team won Game 1 => series over (2-0)
+    return {
+      teamA, teamB, winnerId: teamA.id, loserId: teamB.id,
+      setWinsA: 2, setWinsB: 0,
+      totalMomentumA: set1.momentum.A, totalMomentumB: set1.momentum.B,
+      sets, isDerby, format: "Bo2_ADV"
+    };
+  }
+  
+  // teamB won Game 1 => tied 1-1, play Game 2
+  const set2 = simulateSet(teamA, teamB, currentMeta, isDerby);
+  sets.push({ setNum: 2, winnerId: set2.winnerId, momentum: set2.momentum, logs: set2.logs });
+  
+  const winnerId = set2.winnerId;
+  const loserId = set2.loserId;
+  const setWinsA = 1 + (set2.winnerId === teamA.id ? 1 : 0);
+  const setWinsB = 1 + (set2.winnerId === teamB.id ? 1 : 0);
+  
+  return {
+    teamA, teamB, winnerId, loserId,
+    setWinsA, setWinsB,
+    totalMomentumA: set1.momentum.A + set2.momentum.A,
+    totalMomentumB: set1.momentum.B + set2.momentum.B,
+    sets, isDerby, format: "Bo2_ADV"
+  };
+};
+
 // N-팀 풀 라운드 로빈 생성기 (원형 방식, Circle Method)
 export const generateRoundRobinSchedule = (teams) => {
   const n = teams.length;

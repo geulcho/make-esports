@@ -73,7 +73,7 @@ export default function App() {
   const [teams, setTeams] = useState(INIT_TEAMS);
   const [natTeams, setNatTeams] = useState(INIT_NAT_TEAMS);
   
-  const [natGroups, setNatGroups] = useState({});
+  const [natGroups, setNatGroups] = useState({ EU:{A:[],B:[],C:[],D:[]}, APAC:{A:[],B:[],C:[]}, AMERICA:{North:[],South:[]} });
   const [natSchedules, setNatSchedules] = useState({});
   
   // IQ: array of 5 matchups [{teamAId, teamBId, winnerId, loserId, result}]
@@ -116,6 +116,18 @@ export default function App() {
   const [favorites, setFavorites] = useState([]);
   const [eloHistory, setEloHistory] = useState([]);
   const [visibleGraphTeams, setVisibleGraphTeams] = useState({});
+
+  const prepareNatSchedules = () => {
+    const schedules = {};
+    ['EU', 'APAC', 'AMERICA'].forEach(reg => {
+      if (!natGroups[reg]) return;
+      Object.keys(natGroups[reg]).forEach(groupName => {
+        const teamIds = natGroups[reg][groupName];
+        schedules[reg + '-' + groupName] = generateRoundRobinSchedule(teamIds);
+      });
+    });
+    setNatSchedules(schedules);
+  };
 
   useEffect(() => {
     // ===== Initialize App State =====
@@ -175,17 +187,6 @@ export default function App() {
   }, []);
 
   const addNews = (text, type) => setNews(prev => [{ id: Date.now() + Math.random(), text, type }, ...prev].slice(0, 15));
-
-  const prepareNatSchedules = () => {
-    const schedules = {};
-    ['EU', 'APAC', 'AMERICA'].forEach(reg => {
-      Object.keys(natGroups[reg]).forEach(groupName => {
-        const teamIds = natGroups[reg][groupName];
-        schedules[reg + '-' + groupName] = generateRoundRobinSchedule(teamIds);
-      });
-    });
-    setNatSchedules(schedules);
-  };
 
   // Extract 3rd place teams from all groups
   const getThirdPlaceTeams = (currentNatTeams) => {

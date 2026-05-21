@@ -3,7 +3,7 @@ import { Calendar, ArrowRight, Play, CheckCircle2 } from 'lucide-react';
 import clubsData from './data/clubs_database.json';
 import natData from './data/nat_database.json';
 
-import { getRandomMeta, simulateBo1Match, simulateBo2AdvMatch, simulateBo3Match, simulateBo5Match, generateRoundRobinSchedule } from './utils/engine';
+import { getRandomMeta, simulateSet, simulateBo1Match, simulateBo2AdvMatch, simulateBo3Match, simulateBo5Match, generateRoundRobinSchedule } from './utils/engine';
 import { getLeagueBracketType, getBracketTemplate } from './data/playoffBrackets';
 
 import GNB from './components/GNB';
@@ -604,7 +604,7 @@ export default function App() {
         setMeaFinal(fin);
       }
     } else if (activePhaseObj.type === "PO_DETAILED") {
-      // ===== Playoff MD-by-MD Execution =====
+      // ===== Playoff MD-by-MD Execution (set-by-set for Bo3/Bo5/Bo2_ADV) =====
       const currentMD = subPhase;
       newNews.push({ id: Math.random(), text: "[이벤트] " + activePhaseObj.name + " 매치데이 " + currentMD + " 경기 진행 중.", type: "info" });
       
@@ -616,7 +616,7 @@ export default function App() {
         const bracket = poData.bracket;
         poData.currentMD = currentMD;
         
-        // Find matches scheduled for this MD
+        // Find matches scheduled for this MD that are not yet decided
         const matchesThisMD = bracket.filter(m => !m.winnerId && m.mdSchedule && m.mdSchedule.includes(currentMD));
         
         matchesThisMD.forEach(matchNode => {
@@ -632,51 +632,125 @@ export default function App() {
             if (refMatch) matchNode.teamBId = outcome === 'winner' ? refMatch.winnerId : refMatch.loserId;
           }
           
-          // Skip if teams not yet determined
           if (!matchNode.teamAId || !matchNode.teamBId) return;
           
           const teamA = updatedTeams.find(t => t.id === matchNode.teamAId);
           const teamB = updatedTeams.find(t => t.id === matchNode.teamBId);
           if (!teamA || !teamB) return;
           
-          // For multi-game series (Bo3/Bo5), only play if this is the right MD in the schedule
-          // Bo2_ADV: MD1 = game 1, MD2 = game 2 (if needed) - simulate all at once on first MD
-          // Bo3: simulate on first scheduled MD
-          // Bo5: simulate on first scheduled MD
-          // Bo1: single game
-          const isFirstMD = matchNode.mdSchedule[0] === currentMD;
-          if (!isFirstMD) return; // Only simulate on the first scheduled MD
+          // Initialize partial series state if needed
+          if (!matchNode.setsPlayed) matchNode.setsPlayed = [];
+          if (matchNode.partialSetWinsA === undefined) matchNode.partialSetWinsA = 0;
+          if (matchNode.partialSetWinsB === undefined) matchNode.partialSetWinsB = 0;
+          if (matchNode.partialMomentumA === undefined) matchNode.partialMomentumA = 0;
+          if (matchNode.partialMomentumB === undefined) matchNode.partialMomentumB = 0;
           
-          let match;
-          if (matchNode.format === 'Bo2_ADV') {
-            match = simulateBo2AdvMatch(teamA, teamB, newMeta);
-          } else if (matchNode.format === 'Bo3') {
-            match = simulateBo3Match(teamA, teamB, newMeta);
-          } else if (matchNode.format === 'Bo5') {
-            match = simulateBo5Match(teamA, teamB, newMeta);
+          // Determine how many sets to play this MD
+          const fmt = matchNode.format;
+          
+          if (fmt === 'Bo1') {
+            // Bo1: single set, single MD
+            const isDerby = Math.random() < 0.05;
+            const setResult = simulateSet(teamA, teamB, newMeta, isDerby);
+            matchNode.setsPlayed.push(setResult);
+            matchNode.partialSetWinsA += (setResult.winnerId === teamA.id ? 1 : 0);
+            matchNode.partialSetWinsB += (setResult.winnerId === teamB.id ? 1 : 0);
+            matchNode.partialMomentumA += setResult.momentum.A;
+            matchNode.partialMomentumB += setResult.momentum.B;
+            matchNode.winnerId = setResult.winnerId;
+            matchNode.loserId = setResult.loserId;
+          } else if (fmt === 'Bo2_ADV') {
+            // Bo2_ADV: MD1 = game 1 (advantage team starts 1-0)
+            // If advantage team wins game 1 => 2-0, series over
+            // If advantage team loses game 1 => 1-1, play game 2 on MD2
+            const mdIndex = matchNode.mdSchedule.indexOf(currentMD);
+            const isDerby = Math.random() < 0.05;
+            
+            if (mdIndex === 0) {
+              // Game 1
+              const setResult = simulateSet(teamA, teamB, newMeta, isDerby);
+              matchNode.setsPlayed.push(setResult);
+              matchNode.partialMomentumA += setResult.momentum.A;
+              matchNode.partialMomentumB += setResult.momentum.B;
+              
+              if (setResult.winnerId === teamA.id) {
+                // Advantage team won => series over (2-0)
+                matchNode.partialSetWinsA = 2;
+                matchNode.partialSetWinsB = 0;
+                matchNode.winnerId = teamA.id;
+                matchNode.loserId = teamB.id;
+              } else {
+                // tied 1-1, wait for game 2
+                matchNode.partialSetWinsA = 1;
+                matchNode.partialSetWinsB = 1;
+              }
+            } else if (mdIndex === 1 && !matchNode.winnerId) {
+              // Game 2 (decider)
+              const setResult = simulateSet(teamA, teamB, newMeta, isDerby);
+              matchNode.setsPlayed.push(setResult);
+              matchNode.partialMomentumA += setResult.momentum.A;
+              matchNode.partialMomentumB += setResult.momentum.B;
+              
+              if (setResult.winnerId === teamA.id) {
+                matchNode.partialSetWinsA = 2;
+                matchNode.partialSetWinsB = 1;
+              } else {
+                matchNode.partialSetWinsA = 1;
+                matchNode.partialSetWinsB = 2;
+              }
+              matchNode.winnerId = setResult.winnerId;
+              matchNode.loserId = setResult.loserId;
+            }
           } else {
-            match = simulateBo1Match(teamA, teamB, newMeta);
+            // Bo3 or Bo5: play one set per MD
+            const maxSets = fmt === 'Bo5' ? 5 : 3;
+            const winsNeeded = Math.ceil(maxSets / 2);
+            
+            // Only play if series is not yet decided
+            if (matchNode.partialSetWinsA < winsNeeded && matchNode.partialSetWinsB < winsNeeded) {
+              const isDerby = Math.random() < 0.05;
+              const setResult = simulateSet(teamA, teamB, newMeta, isDerby);
+              matchNode.setsPlayed.push(setResult);
+              matchNode.partialMomentumA += setResult.momentum.A;
+              matchNode.partialMomentumB += setResult.momentum.B;
+              
+              if (setResult.winnerId === teamA.id) matchNode.partialSetWinsA++;
+              else matchNode.partialSetWinsB++;
+              
+              // Check if series is decided
+              if (matchNode.partialSetWinsA >= winsNeeded) {
+                matchNode.winnerId = teamA.id;
+                matchNode.loserId = teamB.id;
+              } else if (matchNode.partialSetWinsB >= winsNeeded) {
+                matchNode.winnerId = teamB.id;
+                matchNode.loserId = teamA.id;
+              }
+            }
           }
           
-          matchNode.winnerId = match.winnerId;
-          matchNode.loserId = match.loserId;
-          matchNode.score = match.setWinsA + "-" + match.setWinsB;
-          matchNode.momentumScore = match.totalMomentumA + "-" + match.totalMomentumB;
+          // Update running score display
+          matchNode.score = matchNode.partialSetWinsA + "-" + matchNode.partialSetWinsB;
+          matchNode.momentumScore = matchNode.partialMomentumA + "-" + matchNode.partialMomentumB;
           
-          // Update team stats
-          const tA = updatedTeams.find(t => t.id === teamA.id);
-          const tB = updatedTeams.find(t => t.id === teamB.id);
-          tA.match_count++; tB.match_count++;
-          tA.set_wins += match.setWinsA; tA.set_losses += match.setWinsB; tA.score_diff += (match.totalMomentumA - match.totalMomentumB);
-          tB.set_wins += match.setWinsB; tB.set_losses += match.setWinsA; tB.score_diff += (match.totalMomentumB - match.totalMomentumA);
-          const winner = updatedTeams.find(t => t.id === match.winnerId);
-          const loser = updatedTeams.find(t => t.id === match.loserId);
-          winner.wins++; winner.streak = winner.streak > 0 ? winner.streak + 1 : 1;
-          loser.losses++; loser.streak = loser.streak < 0 ? loser.streak - 1 : -1;
-          const eloChange = Math.max(5, Math.round(32 * (1 - (1 / (1 + Math.pow(10, (loser.elo - winner.elo) / 400))))));
-          winner.elo += eloChange; loser.elo -= eloChange;
+          // If match just finished, update team stats
+          if (matchNode.winnerId && !matchNode.statsUpdated) {
+            matchNode.statsUpdated = true;
+            const tA = updatedTeams.find(t => t.id === teamA.id);
+            const tB = updatedTeams.find(t => t.id === teamB.id);
+            tA.match_count++; tB.match_count++;
+            tA.set_wins += matchNode.partialSetWinsA; tA.set_losses += matchNode.partialSetWinsB;
+            tA.score_diff += (matchNode.partialMomentumA - matchNode.partialMomentumB);
+            tB.set_wins += matchNode.partialSetWinsB; tB.set_losses += matchNode.partialSetWinsA;
+            tB.score_diff += (matchNode.partialMomentumB - matchNode.partialMomentumA);
+            const winner = updatedTeams.find(t => t.id === matchNode.winnerId);
+            const loser = updatedTeams.find(t => t.id === matchNode.loserId);
+            winner.wins++; winner.streak = winner.streak > 0 ? winner.streak + 1 : 1;
+            loser.losses++; loser.streak = loser.streak < 0 ? loser.streak - 1 : -1;
+            const eloChange = Math.max(5, Math.round(32 * (1 - (1 / (1 + Math.pow(10, (loser.elo - winner.elo) / 400))))));
+            winner.elo += eloChange; loser.elo -= eloChange;
+          }
           
-          allMatchesThisPhase.push({ id: "PO-" + leagueId + "-" + matchNode.id + "-MD" + currentMD, phase: leagueId + " PO " + matchNode.label, ...match });
+          allMatchesThisPhase.push({ id: "PO-" + leagueId + "-" + matchNode.id + "-MD" + currentMD, phase: leagueId + " PO " + matchNode.label });
         });
       });
       

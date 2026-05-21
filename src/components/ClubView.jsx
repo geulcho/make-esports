@@ -103,7 +103,14 @@ export default function ClubView({
               className="bg-slate-800 text-white text-sm font-bold rounded-lg px-3 py-1.5 border border-slate-700 outline-none focus:border-indigo-500 transition-all cursor-pointer"
             >
               <option value="FAVORITES">⭐ My Favorites</option>
-              {LEAGUES.map(l => <option key={l} value={l}>{l}</option>)}
+              {LEAGUES.map(l => {
+                const leagueNames = {
+                  L_KR: '한국', L_NA: '북미', L_CN: '중국', L_NEU: '북유럽', L_WEU: '서유럽',
+                  L_RU: '러시아', L_DE: '독일', L_TW: '대만', L_SEU: '남유럽', L_BR: '브라질',
+                  L_EEU: '동유럽', L_SEA: '동남아', L_JP: '일본', L_SA: '남미', L_TR: '터키', L_MEAF: '중동/아프리카'
+                };
+                return <option key={l} value={l}>{leagueNames[l] || l}</option>;
+              })}
             </select>
           </div>
           

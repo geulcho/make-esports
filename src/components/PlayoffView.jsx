@@ -61,8 +61,11 @@ export default function PlayoffView({ teams, playoffState, LEAGUES }) {
     let seedLabelB = match.seedLabel_B || '';
     if (seedLabelB && !seedLabelB.startsWith('#') && !seedLabelB.includes('승자') && !seedLabelB.includes('패자')) seedLabelB = '#' + seedLabelB;
 
-    let displayScore = isDone ? match.score : '-';
-    if (isDone && (match.format === 'Bo3' || match.format === 'Bo5')) {
+    // Check if series is in progress (has partial score but no winner yet)
+    const isInProgress = !isDone && match.score && match.score !== '0-0' && (match.partialSetWinsA > 0 || match.partialSetWinsB > 0);
+
+    let displayScore = null;
+    if (isDone && (match.format === 'Bo3' || match.format === 'Bo5' || match.format === 'Bo2_ADV')) {
       displayScore = (
         <div className="flex flex-col items-center">
           <span className="font-black text-lg leading-tight">{match.score}</span>
@@ -71,6 +74,13 @@ export default function PlayoffView({ teams, playoffState, LEAGUES }) {
       );
     } else if (isDone) {
       displayScore = <span className="font-black text-lg text-white">{match.score}</span>;
+    } else if (isInProgress) {
+      displayScore = (
+        <div className="flex flex-col items-center">
+          <span className="font-black text-lg leading-tight text-yellow-400 animate-pulse">{match.score}</span>
+          <span className="text-[9px] text-yellow-500/70 font-bold">진행 중</span>
+        </div>
+      );
     }
 
     return (
@@ -100,7 +110,7 @@ export default function PlayoffView({ teams, playoffState, LEAGUES }) {
 
           {/* Score */}
           <div className="flex-shrink-0 w-16 text-center">
-            {isDone ? (
+            {displayScore ? (
               displayScore
             ) : (
               <span className="text-slate-600 font-bold text-xs">VS</span>

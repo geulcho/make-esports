@@ -70,7 +70,7 @@ const simulatePhase = (phaseType, teamA, teamB, currentMeta, isDerby, currentMom
   return { logs, momentumA, momentumB, ended, endReason };
 };
 
-const simulateSet = (teamA, teamB, currentMeta, isDerby) => {
+export const simulateSet = (teamA, teamB, currentMeta, isDerby) => {
   let logs = [];
   let momentum = { A: 0, B: 0 };
   let endReason = "";

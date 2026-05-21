@@ -18,22 +18,32 @@ const LEAGUES = [...new Set(clubsData.clubs.map(c => c.league_id))];
 
 const PHASES = [
   { id: 0, name: "프리시즌 (대기)", type: "REST" },
-  { id: 1, name: "P1: 오프닝 페이즈 1", type: "JUMP", matches: { 8: 5, 10: 4, 12: 5, 16: 5, 24: 8 } },
-  { id: 2, name: "P2: 오프닝 페이즈 2", type: "JUMP", matches: { 8: 5, 10: 5, 12: 6, 16: 6, 24: 9 } },
-  { id: 3, name: "P3: 인터매치 1 (국대)", type: "NAT_DETAILED", maxSubPhase: 7 },
-  { id: 4, name: "P4: 오프닝 페이즈 3", type: "JUMP", matches: { 8: 5, 10: 4, 12: 5, 16: 5, 24: 8 } },
-  { id: 5, name: "P5: 오프닝 페이즈 4", type: "JUMP", matches: { 8: 6, 10: 5, 12: 6, 16: 6, 24: 9 } },
-  { id: 6, name: "P6: 오프닝 플레이오프", type: "PO_DETAILED", maxSubPhase: 16 },
-  { id: 7, name: "P7: MSM (국제대회)", type: "DETAILED", archive: "오프닝 시즌" },
-  { id: 8, name: "P8: 인터매치 2 (국대)", type: "NAT_DETAILED", maxSubPhase: 7 },
-  { id: 9, name: "P9: 레귤러 페이즈 1", type: "JUMP", matches: { 8: 5, 10: 4, 12: 5, 16: 5, 24: 8 } },
-  { id: 10, name: "P10: 레귤러 페이즈 2", type: "JUMP", matches: { 8: 5, 10: 5, 12: 6, 16: 6, 24: 9 } },
-  { id: 11, name: "P11: 인터매치 3 (IQ)", type: "IQ_DETAILED", maxSubPhase: 5 },
-  { id: 12, name: "P12: 레귤러 페이즈 3", type: "JUMP", matches: { 8: 5, 10: 4, 12: 5, 16: 5, 24: 8 } },
-  { id: 13, name: "P13: 레귤러 페이즈 4", type: "JUMP", matches: { 8: 6, 10: 5, 12: 6, 16: 6, 24: 9 } },
-  { id: 14, name: "P14: 레귤러 플레이오프", type: "PO_DETAILED", maxSubPhase: 16 },
-  { id: 15, name: "P15: WT & VSC (국제대회)", type: "DETAILED", archive: "레귤러 시즌" },
-  { id: 16, name: "P16: WE / 비시즌", type: "DETAILED" }
+  // ===== 오프닝 시즌 (8 페이즈) =====
+  { id: 1, name: "P1: 오프닝 페이즈 1", type: "JUMP", matches: { 8: 2, 10: 2, 12: 2, 16: 2, 24: 4 } },
+  { id: 2, name: "P2: 오프닝 페이즈 2", type: "JUMP", matches: { 8: 2, 10: 2, 12: 2, 16: 2, 24: 4 } },
+  { id: 3, name: "P3: 오프닝 페이즈 3", type: "JUMP", matches: { 8: 2, 10: 2, 12: 3, 16: 3, 24: 4 } },
+  { id: 4, name: "P4: 오프닝 페이즈 4", type: "JUMP", matches: { 8: 3, 10: 2, 12: 3, 16: 3, 24: 4 } },
+  { id: 5, name: "P5: 인터매치 1 (국대)", type: "NAT_DETAILED", maxSubPhase: 7 },
+  { id: 6, name: "P6: 오프닝 페이즈 5", type: "JUMP", matches: { 8: 3, 10: 2, 12: 3, 16: 3, 24: 4 } },
+  { id: 7, name: "P7: 오프닝 페이즈 6", type: "JUMP", matches: { 8: 3, 10: 2, 12: 3, 16: 3, 24: 4 } },
+  { id: 8, name: "P8: 오프닝 페이즈 7", type: "JUMP", matches: { 8: 3, 10: 3, 12: 3, 16: 3, 24: 5 } },
+  { id: 9, name: "P9: 오프닝 페이즈 8", type: "JUMP", matches: { 8: 3, 10: 3, 12: 3, 16: 3, 24: 5 } },
+  { id: 10, name: "P10: 오프닝 플레이오프", type: "PO_DETAILED", maxSubPhase: 16 },
+  { id: 11, name: "P11: MSM (국제대회)", type: "DETAILED", archive: "오프닝 시즌" },
+  // ===== 레귤러 시즌 (8 페이즈) =====
+  { id: 12, name: "P12: 인터매치 2 (국대)", type: "NAT_DETAILED", maxSubPhase: 7 },
+  { id: 13, name: "P13: 레귤러 페이즈 1", type: "JUMP", matches: { 8: 2, 10: 2, 12: 2, 16: 2, 24: 4 } },
+  { id: 14, name: "P14: 레귤러 페이즈 2", type: "JUMP", matches: { 8: 2, 10: 2, 12: 2, 16: 2, 24: 4 } },
+  { id: 15, name: "P15: 레귤러 페이즈 3", type: "JUMP", matches: { 8: 2, 10: 2, 12: 3, 16: 3, 24: 4 } },
+  { id: 16, name: "P16: 레귤러 페이즈 4", type: "JUMP", matches: { 8: 3, 10: 2, 12: 3, 16: 3, 24: 4 } },
+  { id: 17, name: "P17: 인터매치 3 (IQ)", type: "IQ_DETAILED", maxSubPhase: 5 },
+  { id: 18, name: "P18: 레귤러 페이즈 5", type: "JUMP", matches: { 8: 3, 10: 2, 12: 3, 16: 3, 24: 4 } },
+  { id: 19, name: "P19: 레귤러 페이즈 6", type: "JUMP", matches: { 8: 3, 10: 2, 12: 3, 16: 3, 24: 4 } },
+  { id: 20, name: "P20: 레귤러 페이즈 7", type: "JUMP", matches: { 8: 3, 10: 3, 12: 3, 16: 3, 24: 5 } },
+  { id: 21, name: "P21: 레귤러 페이즈 8", type: "JUMP", matches: { 8: 3, 10: 3, 12: 3, 16: 3, 24: 5 } },
+  { id: 22, name: "P22: 레귤러 플레이오프", type: "PO_DETAILED", maxSubPhase: 16 },
+  { id: 23, name: "P23: WT & VSC (국제대회)", type: "DETAILED", archive: "레귤러 시즌" },
+  { id: 24, name: "P24: WE / 비시즌", type: "DETAILED" }
 ];
 
 const INIT_TEAMS = clubsData.clubs.map(c => ({
@@ -320,7 +330,7 @@ export default function App() {
           initializePlayoffs(teams);
         }
         
-        if (nextPhase?.id === 11) {
+        if (nextPhase?.type === 'IQ_DETAILED') {
           // P11: Select proper IQ teams (3rd place from each group + MEA runner-up)
           const thirdPlaceEntries = getThirdPlaceTeams(natTeams);
           
@@ -454,7 +464,7 @@ export default function App() {
       });
        
       // ===== MEA Logic =====
-      if (activePhaseObj.id === 3) {
+      if (activePhaseObj.id === 5) {
         // P3: Stage 1 (MD 1~3) and Stage 2 (MD 5~7)
         if (subPhase >= 1 && subPhase <= 3) {
           // Stage 1: simulate 1~2 matches per MD from the 4 matchups
@@ -523,7 +533,7 @@ export default function App() {
             }
           }
         }
-      } else if (activePhaseObj.id === 8) {
+      } else if (activePhaseObj.id === 12) {
         // P8: Single Elimination Final Stage
         const fin = JSON.parse(JSON.stringify(meaFinal));
         

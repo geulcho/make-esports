@@ -168,7 +168,7 @@ export default function ClubView({
             )}
             {history.map((phaseMatches, i) => {
               const relevantMatches = phaseMatches.filter(m => {
-                if (!m.teamA.league_id) return false; // not club matches
+                if (!m || !m.teamA || !m.teamB || !m.teamA.league_id) return false; // not regular club matches or missing data
                 if (selectedLeague === 'FAVORITES') return favorites.includes(m.teamA.id) || favorites.includes(m.teamB.id);
                 return m.teamA.league_id === selectedLeague;
               });

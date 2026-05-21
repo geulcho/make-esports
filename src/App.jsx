@@ -651,6 +651,7 @@ export default function App() {
           matchNode.winnerId = match.winnerId;
           matchNode.loserId = match.loserId;
           matchNode.score = match.setWinsA + "-" + match.setWinsB;
+          matchNode.momentumScore = match.totalMomentumA + "-" + match.totalMomentumB;
           
           // Update team stats
           const tA = updatedTeams.find(t => t.id === teamA.id);

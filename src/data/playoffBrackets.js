@@ -24,7 +24,7 @@ export const BRACKET_NA = [
   { id: "2-3", round: 2, label: "2라운드 3경기", seedA: "1-5.winner", seedB: "1-8.winner", format: "Bo3", mdSchedule: [4, 5, 6] },
   { id: "2-4", round: 2, label: "2라운드 4경기", seedA: "1-6.winner", seedB: "1-7.winner", format: "Bo3", mdSchedule: [4, 5, 6] },
   // Round 3: 2 matches, Bo3 (Conference Finals)
-  { id: "3-1", round: 3, label: "3라운드 (서부결승)", seedA: "2-1.winner", seedB: "2-2.winner", format: "Bo3", mdSchedule: [4, 5, 6] },
+  { id: "3-1", round: 3, label: "3라운드 (서부결승)", seedA: "2-1.winner", seedB: "2-2.winner", format: "Bo3", mdSchedule: [8, 9, 10] },
   { id: "3-2", round: 3, label: "3라운드 (동부결승)", seedA: "2-3.winner", seedB: "2-4.winner", format: "Bo3", mdSchedule: [8, 9, 10] },
   // Round 4: Grand Final, Bo5
   { id: "4-1", round: 4, label: "결승", seedA: "3-1.winner", seedB: "3-2.winner", format: "Bo5", mdSchedule: [12, 13, 14, 15, 16] },

@@ -765,19 +765,24 @@ export default function App() {
               matchNode.loserId = setResult.loserId;
             }
           } else {
-            // Bo3 or Bo5: play one set per MD
+            // Bo3 or Bo5: play one FULL Bo5 Match per MD
             const maxSets = fmt === 'Bo5' ? 5 : 3;
             const winsNeeded = Math.ceil(maxSets / 2);
             
             // Only play if series is not yet decided
             if (matchNode.partialSetWinsA < winsNeeded && matchNode.partialSetWinsB < winsNeeded) {
-              const isDerby = Math.random() < 0.05;
-              const setResult = simulateSet(teamA, teamB, newMeta, isDerby);
-              matchNode.setsPlayed.push(setResult);
-              matchNode.partialMomentumA += setResult.momentum.A;
-              matchNode.partialMomentumB += setResult.momentum.B;
+              const matchResult = simulateBo5Match(teamA, teamB, newMeta);
+              matchNode.setsPlayed.push(matchResult);
               
-              if (setResult.winnerId === teamA.id) matchNode.partialSetWinsA++;
+              if (!matchNode.totalGameWinsA) matchNode.totalGameWinsA = 0;
+              if (!matchNode.totalGameWinsB) matchNode.totalGameWinsB = 0;
+              matchNode.totalGameWinsA += matchResult.setWinsA;
+              matchNode.totalGameWinsB += matchResult.setWinsB;
+              
+              matchNode.partialMomentumA += matchResult.totalMomentumA;
+              matchNode.partialMomentumB += matchResult.totalMomentumB;
+              
+              if (matchResult.winnerId === teamA.id) matchNode.partialSetWinsA++;
               else matchNode.partialSetWinsB++;
               
               // Check if series is decided
@@ -793,7 +798,11 @@ export default function App() {
           
           // Update running score display
           matchNode.score = matchNode.partialSetWinsA + "-" + matchNode.partialSetWinsB;
-          matchNode.momentumScore = matchNode.partialMomentumA + "-" + matchNode.partialMomentumB;
+          if (fmt === 'Bo3' || fmt === 'Bo5') {
+            matchNode.momentumScore = (matchNode.totalGameWinsA || 0) + "-" + (matchNode.totalGameWinsB || 0);
+          } else {
+            matchNode.momentumScore = matchNode.partialMomentumA + "-" + matchNode.partialMomentumB;
+          }
           
           // If match just finished, update team stats
           if (matchNode.winnerId && !matchNode.statsUpdated) {

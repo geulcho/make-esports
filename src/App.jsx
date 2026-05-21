@@ -1,0 +1,596 @@
+import React, { useState, useEffect } from 'react';
+import { Calendar, ArrowRight, Play, CheckCircle2 } from 'lucide-react';
+import clubsData from './data/clubs_database.json';
+import natData from './data/nat_database.json';
+
+import { getRandomMeta, simulateBo3Match, simulateBo5Match, generateRoundRobinSchedule } from './utils/engine';
+
+import GNB from './components/GNB';
+import ClubView from './components/ClubView';
+import NationalView from './components/NationalView';
+import RankingView from './components/RankingView';
+import LeagueCoefficientsView from './components/LeagueCoefficientsView';
+import InfoView from './components/InfoView';
+
+const LEAGUES = [...new Set(clubsData.clubs.map(c => c.league_id))];
+
+const PHASES = [
+  { id: 0, name: "프리시즌 (대기)", type: "REST" },
+  { id: 1, name: "P1: 오프닝 페이즈 1", type: "JUMP", matches: { 8: 5, 10: 4, 12: 5, 16: 5, 24: 8 } },
+  { id: 2, name: "P2: 오프닝 페이즈 2", type: "JUMP", matches: { 8: 5, 10: 5, 12: 6, 16: 6, 24: 9 } },
+  { id: 3, name: "P3: 인터매치 1 (국대)", type: "NAT_DETAILED", maxSubPhase: 7 },
+  { id: 4, name: "P4: 오프닝 페이즈 3", type: "JUMP", matches: { 8: 5, 10: 4, 12: 5, 16: 5, 24: 8 } },
+  { id: 5, name: "P5: 오프닝 페이즈 4", type: "JUMP", matches: { 8: 6, 10: 5, 12: 6, 16: 6, 24: 9 } },
+  { id: 6, name: "P6: 오프닝 플레이오프", type: "DETAILED" },
+  { id: 7, name: "P7: MSM (국제대회)", type: "DETAILED", archive: "오프닝 시즌" },
+  { id: 8, name: "P8: 인터매치 2 (국대)", type: "NAT_DETAILED", maxSubPhase: 7 },
+  { id: 9, name: "P9: 레귤러 페이즈 1", type: "JUMP", matches: { 8: 5, 10: 4, 12: 5, 16: 5, 24: 8 } },
+  { id: 10, name: "P10: 레귤러 페이즈 2", type: "JUMP", matches: { 8: 5, 10: 5, 12: 6, 16: 6, 24: 9 } },
+  { id: 11, name: "P11: 인터매치 3 (IQ)", type: "IQ_DETAILED", maxSubPhase: 5 },
+  { id: 12, name: "P12: 레귤러 페이즈 3", type: "JUMP", matches: { 8: 5, 10: 4, 12: 5, 16: 5, 24: 8 } },
+  { id: 13, name: "P13: 레귤러 페이즈 4", type: "JUMP", matches: { 8: 6, 10: 5, 12: 6, 16: 6, 24: 9 } },
+  { id: 14, name: "P14: 레귤러 플레이오프", type: "DETAILED" },
+  { id: 15, name: "P15: WT & VSC (국제대회)", type: "DETAILED", archive: "레귤러 시즌" },
+  { id: 16, name: "P16: WE / 비시즌", type: "DETAILED" }
+];
+
+const INIT_TEAMS = clubsData.clubs.map(c => ({
+  ...c, elo: c.elo_rating || 1500, match_count: 0, streak: 0, wins: 0, losses: 0, set_wins: 0, set_losses: 0, score_diff: 0, colors: c.colors || { bg: '#333333', text: '#ffffff' }
+}));
+
+const INIT_NAT_TEAMS = natData.teams.map(c => ({
+  ...c, elo: c.elo_rating || 1500, match_count: 0, streak: 0, wins: 0, losses: 0, set_wins: 0, set_losses: 0, score_diff: 0, colors: c.colors || { bg: '#333333', text: '#ffffff' }
+}));
+
+// Helper: sort teams by tiebreaking rule
+const sortByStandings = (teamsList) => {
+  return [...teamsList].sort((a, b) => {
+    if (b.wins !== a.wins) return b.wins - a.wins;
+    const sdA = a.set_wins - a.set_losses;
+    const sdB = b.set_wins - b.set_losses;
+    if (sdB !== sdA) return sdB - sdA;
+    if (b.set_wins !== a.set_wins) return b.set_wins - a.set_wins;
+    if (b.score_diff !== a.score_diff) return b.score_diff - a.score_diff;
+    return b.elo - a.elo;
+  });
+};
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState('club');
+  
+  const [teams, setTeams] = useState(INIT_TEAMS);
+  const [natTeams, setNatTeams] = useState(INIT_NAT_TEAMS);
+  
+  const [natGroups, setNatGroups] = useState({});
+  const [natSchedules, setNatSchedules] = useState({});
+  
+  // IQ: array of 5 matchups [{teamAId, teamBId, winnerId, loserId, result}]
+  const [iqMatchups, setIqMatchups] = useState([]);
+  
+  // MEA: explicit matchup arrays
+  const [meaStage1, setMeaStage1] = useState([]); // 4 matchups
+  const [meaStage2, setMeaStage2] = useState([]); // 8 matchups
+  const [meaFinal, setMeaFinal] = useState([]); // Single-elim bracket (4 QF + 2 SF + 1 F)
+  const [meaTop12Ids, setMeaTop12Ids] = useState([]);
+
+  const [phaseIdx, setPhaseIdx] = useState(0);
+  const [subPhase, setSubPhase] = useState(0); 
+  const [isPhaseCompleted, setIsPhaseCompleted] = useState(false);
+  
+  const [currentMeta, setCurrentMeta] = useState(["A", "C"]);
+  
+  const [history, setHistory] = useState([]);
+  const [news, setNews] = useState([{ id: 0, text: "새로운 가상 이스포츠 시즌이 시작되었습니다!", type: "info" }]);
+  const [selectedMatch, setSelectedMatch] = useState(null);
+  const [seasonHistory, setSeasonHistory] = useState([]);
+
+  const [selectedLeague, setSelectedLeague] = useState("L_KR");
+  const [favorites, setFavorites] = useState([]);
+  const [eloHistory, setEloHistory] = useState([{ phase: 0, ...INIT_TEAMS.reduce((acc, t) => ({ ...acc, [t.id]: t.elo }), {}) }]);
+  const [visibleGraphTeams, setVisibleGraphTeams] = useState({});
+
+  useEffect(() => {
+    // === Seeded Pot Draw for EU (4 groups) ===
+    const groups = { EU: {A:[], B:[], C:[], D:[]}, APAC: {A:[], B:[], C:[]}, AMERICA: {North:[], South:[]} };
+    const euTeams = natTeams.filter(t => t.region === 'EU').sort((a,b) => b.elo - a.elo);
+    const euGroupNames = ['A','B','C','D'];
+    const euTeamsPerGroup = Math.ceil(euTeams.length / 4);
+    // Create pots (each pot = 4 teams of similar strength)
+    for (let pot = 0; pot < euTeamsPerGroup; pot++) {
+      const potTeams = euTeams.slice(pot * 4, pot * 4 + 4);
+      const shuffledPot = [...potTeams].sort(() => 0.5 - Math.random());
+      shuffledPot.forEach((t, i) => {
+        if (i < euGroupNames.length) groups.EU[euGroupNames[i]].push(t.id);
+      });
+    }
+    
+    // === Seeded Pot Draw for APAC (3 groups) ===
+    const apacTeams = natTeams.filter(t => t.region === 'APAC').sort((a,b) => b.elo - a.elo);
+    const apacGroupNames = ['A','B','C'];
+    const apacTeamsPerGroup = Math.ceil(apacTeams.length / 3);
+    for (let pot = 0; pot < apacTeamsPerGroup; pot++) {
+      const potTeams = apacTeams.slice(pot * 3, pot * 3 + 3);
+      const shuffledPot = [...potTeams].sort(() => 0.5 - Math.random());
+      shuffledPot.forEach((t, i) => {
+        if (i < apacGroupNames.length) groups.APAC[apacGroupNames[i]].push(t.id);
+      });
+    }
+    
+    // AMERICA: fixed North/South by sub_region
+    const amN = natTeams.filter(t => t.region === 'AMERICA' && t.sub_region === 'North');
+    const amS = natTeams.filter(t => t.region === 'AMERICA' && t.sub_region === 'South');
+    groups.AMERICA.North = amN.map(t=>t.id); 
+    groups.AMERICA.South = amS.map(t=>t.id);
+    
+    setNatGroups(groups);
+
+    // MEA Initial: sort by elo, top12 seeds vs bottom8
+    const mea = natTeams.filter(t => t.region === 'MEAF').sort((a,b) => b.elo - a.elo);
+    const top12 = mea.slice(0, 12).map(t => t.id);
+    const bot8 = mea.slice(12, 20).map(t => t.id);
+    setMeaTop12Ids(top12);
+    
+    // Generate Stage 1 matchups: 4 matches from bottom 8 (seeded: 1v8, 2v7, 3v6, 4v5 within bottom8)
+    const s1Matchups = [
+      { teamAId: bot8[0], teamBId: bot8[7], winnerId: null, loserId: null, score: null },
+      { teamAId: bot8[3], teamBId: bot8[4], winnerId: null, loserId: null, score: null },
+      { teamAId: bot8[1], teamBId: bot8[6], winnerId: null, loserId: null, score: null },
+      { teamAId: bot8[2], teamBId: bot8[5], winnerId: null, loserId: null, score: null }
+    ];
+    setMeaStage1(s1Matchups);
+  }, []);
+
+  const addNews = (text, type) => setNews(prev => [{ id: Date.now() + Math.random(), text, type }, ...prev].slice(0, 15));
+
+  const prepareNatSchedules = () => {
+    const schedules = {};
+    ['EU', 'APAC', 'AMERICA'].forEach(reg => {
+      Object.keys(natGroups[reg]).forEach(groupName => {
+        const teamIds = natGroups[reg][groupName];
+        schedules[reg + '-' + groupName] = generateRoundRobinSchedule(teamIds);
+      });
+    });
+    setNatSchedules(schedules);
+  };
+
+  // Extract 3rd place teams from all groups
+  const getThirdPlaceTeams = (currentNatTeams) => {
+    const thirdPlaceTeams = [];
+    ['EU', 'APAC', 'AMERICA'].forEach(reg => {
+      Object.keys(natGroups[reg]).forEach(groupName => {
+        const teamIds = natGroups[reg][groupName];
+        const teamObjs = teamIds.map(id => currentNatTeams.find(t => t.id === id)).filter(Boolean);
+        const sorted = sortByStandings(teamObjs);
+        if (sorted.length >= 3) {
+          thirdPlaceTeams.push({ id: sorted[2].id, region: reg, group: groupName });
+        }
+      });
+    });
+    return thirdPlaceTeams; // EU 4 + APAC 3 + AMERICA 2 = 9 teams
+  };
+
+  // Generate IQ matchups: 10 teams, same region MUST NOT face each other
+  const generateIQMatchups = (teamEntries) => {
+    // Backtracking approach to ensure no same-region matchups
+    const shuffle = (arr) => [...arr].sort(() => 0.5 - Math.random());
+    
+    const tryPairing = (remaining) => {
+      if (remaining.length === 0) return [];
+      if (remaining.length === 1) return null; // odd leftover = fail
+      
+      for (let i = 1; i < remaining.length; i++) {
+        if (remaining[0].region !== remaining[i].region) {
+          const rest = remaining.filter((_, idx) => idx !== 0 && idx !== i);
+          const subResult = tryPairing(rest);
+          if (subResult !== null) {
+            return [
+              { teamAId: remaining[0].id, teamBId: remaining[i].id, winnerId: null, loserId: null, score: null },
+              ...subResult
+            ];
+          }
+        }
+      }
+      return null; // no valid pairing found
+    };
+    
+    // Try multiple shuffles to find a valid pairing
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const result = tryPairing(shuffle(teamEntries));
+      if (result) return result;
+    }
+    
+    // Absolute fallback (should never happen with 10 teams from 4+ regions)
+    const pool = shuffle(teamEntries);
+    const matchups = [];
+    for (let i = 0; i < pool.length - 1; i += 2) {
+      matchups.push({ teamAId: pool[i].id, teamBId: pool[i+1].id, winnerId: null, loserId: null, score: null });
+    }
+    return matchups;
+  };
+
+  const processTransition = () => {
+    const currentPhaseObj = PHASES[phaseIdx];
+    const isNatDetailed = currentPhaseObj.type === "NAT_DETAILED" || currentPhaseObj.type === "IQ_DETAILED";
+    
+    if (isPhaseCompleted) {
+      if (isNatDetailed && subPhase < currentPhaseObj.maxSubPhase) {
+        setSubPhase(subPhase + 1);
+      } else {
+        const nextIdx = phaseIdx + 1;
+        setPhaseIdx(nextIdx);
+        const nextPhase = PHASES[nextIdx];
+        setSubPhase(nextPhase?.type === "NAT_DETAILED" || nextPhase?.type === "IQ_DETAILED" ? 1 : 0);
+        
+        if (nextPhase?.type === "NAT_DETAILED") {
+          prepareNatSchedules();
+        }
+        
+        if (nextPhase?.id === 11) {
+          // P11: Select proper IQ teams (3rd place from each group + MEA runner-up)
+          const thirdPlaceEntries = getThirdPlaceTeams(natTeams);
+          
+          // Find MEA runner-up from single-elim final bracket
+          let meaRunnerUp = null;
+          const finalMatch = meaFinal.find(m => m.round === 'F' && m.loserId);
+          if (finalMatch) {
+            meaRunnerUp = { id: finalMatch.loserId, region: 'MEAF' };
+          }
+          
+          const allIQEntries = [...thirdPlaceEntries];
+          if (meaRunnerUp) allIQEntries.push(meaRunnerUp);
+          
+          const matchups = generateIQMatchups(allIQEntries);
+          setIqMatchups(matchups);
+        }
+      }
+      setIsPhaseCompleted(false);
+      return;
+    }
+
+    // First time clicking from Phase 0
+    if (phaseIdx === 0) {
+      setPhaseIdx(1);
+      setIsPhaseCompleted(false);
+      return;
+    }
+
+    const activePhaseObj = PHASES[phaseIdx];
+    const newMeta = getRandomMeta();
+    setCurrentMeta(newMeta);
+    let newNews = [];
+    let updatedTeams = JSON.parse(JSON.stringify(teams));
+    let updatedNatTeams = JSON.parse(JSON.stringify(natTeams));
+    let allMatchesThisPhase = [];
+    
+    // Archiving
+    if (activePhaseObj.archive && subPhase === 0) {
+      const sortedForArchive = [...updatedTeams].sort((a, b) => b.elo - a.elo).map((t, i) => ({ ...t, rank: i + 1 }));
+      setSeasonHistory(prev => [...prev, { name: activePhaseObj.archive, teams: sortedForArchive }]);
+      updatedTeams = updatedTeams.map(t => ({ ...t, match_count: 0, wins: 0, losses: 0, set_wins: 0, set_losses: 0, score_diff: 0, streak: 0 }));
+      newNews.push({ id: Math.random(), text: "[시스템] " + activePhaseObj.archive + " 기록이 시즌 기록실에 저장되었으며 성적이 리셋되었습니다.", type: "info" });
+    }
+
+    if (activePhaseObj.type === "JUMP") {
+      newNews.push({ id: Math.random(), text: "[메타 패치] " + activePhaseObj.name + " 연산 완료! 메타: [" + newMeta.join(', ') + "]", type: "meta" });
+      LEAGUES.forEach(leagueId => {
+        const leagueTeams = updatedTeams.filter(t => t.league_id === leagueId);
+        const matchesNeeded = activePhaseObj.matches[leagueTeams.length] || 4;
+        const isBo5 = (leagueId === 'L_NA' || leagueId === 'L_CN');
+        
+        for (let round = 0; round < matchesNeeded; round++) {
+          const shuffled = [...leagueTeams].sort(() => 0.5 - Math.random());
+          for (let i = 0; i < Math.floor(shuffled.length / 2) * 2; i += 2) {
+            const teamA = shuffled[i]; const teamB = shuffled[i+1];
+            const match = isBo5 ? simulateBo5Match(teamA, teamB, newMeta) : simulateBo3Match(teamA, teamB, newMeta);
+            const winner = updatedTeams.find(t => t.id === match.winnerId);
+            const loser = updatedTeams.find(t => t.id === match.loserId);
+            const tA = updatedTeams.find(t => t.id === teamA.id);
+            const tB = updatedTeams.find(t => t.id === teamB.id);
+
+            tA.match_count++; tB.match_count++;
+            tA.set_wins += match.setWinsA; tA.set_losses += match.setWinsB; tA.score_diff += (match.totalMomentumA - match.totalMomentumB);
+            tB.set_wins += match.setWinsB; tB.set_losses += match.setWinsA; tB.score_diff += (match.totalMomentumB - match.totalMomentumA);
+            winner.wins++; winner.streak = winner.streak > 0 ? winner.streak + 1 : 1;
+            loser.losses++; loser.streak = loser.streak < 0 ? loser.streak - 1 : -1;
+            const eloChange = Math.max(5, Math.round(32 * (1 - (1 / (1 + Math.pow(10, (loser.elo - winner.elo) / 400))))));
+            winner.elo += eloChange; loser.elo -= eloChange;
+
+            allMatchesThisPhase.push({ id: "P" + activePhaseObj.id + "-" + leagueId + "-" + round + "-" + i, phase: activePhaseObj.name, ...match });
+          }
+        }
+      });
+      const newEloEntry = { phase: activePhaseObj.id };
+      updatedTeams.forEach(t => { newEloEntry[t.id] = t.elo; });
+      setEloHistory(prev => [...prev, newEloEntry]);
+
+    } else if (activePhaseObj.type === "IQ_DETAILED") {
+      // IQ: simulate the matchup for this matchday
+      newNews.push({ id: Math.random(), text: "[이벤트] P11 IQ 매치데이 " + subPhase + " 경기 종료.", type: "info" });
+      const matchIdx = subPhase - 1;
+      if (matchIdx < iqMatchups.length && !iqMatchups[matchIdx].winnerId) {
+        const mu = iqMatchups[matchIdx];
+        const teamA = updatedNatTeams.find(t => t.id === mu.teamAId);
+        const teamB = updatedNatTeams.find(t => t.id === mu.teamBId);
+        if (teamA && teamB) {
+          const match = simulateBo5Match(teamA, teamB, currentMeta);
+          const updatedMatchups = [...iqMatchups];
+          updatedMatchups[matchIdx] = { ...mu, winnerId: match.winnerId, loserId: match.loserId, score: match.setWinsA + "-" + match.setWinsB };
+          setIqMatchups(updatedMatchups);
+          allMatchesThisPhase.push({ id: "IQ-MD" + subPhase, phase: "IQ MD" + subPhase, ...match });
+        }
+      }
+
+    } else if (activePhaseObj.type === "NAT_DETAILED") {
+      newNews.push({ id: Math.random(), text: "[이벤트] " + activePhaseObj.name + " 매치데이 " + subPhase + " 종료.", type: "info" });
+       
+      // RR execution for EU, APAC, AMERICA
+      ['EU', 'APAC', 'AMERICA'].forEach(reg => {
+        Object.keys(natGroups[reg]).forEach(groupName => {
+          const schedule = natSchedules[reg + '-' + groupName];
+          if(!schedule) return;
+          
+          let roundsToPlay = [];
+          if (schedule.length > 7 && subPhase === 7) {
+            for (let r = 6; r < schedule.length; r++) { roundsToPlay.push(schedule[r]); }
+          } else if (subPhase - 1 < schedule.length) {
+            roundsToPlay.push(schedule[subPhase - 1]);
+          }
+
+          roundsToPlay.forEach(roundMatches => {
+            roundMatches.forEach(pair => {
+              const teamA = updatedNatTeams.find(t => t.id === pair[0]);
+              const teamB = updatedNatTeams.find(t => t.id === pair[1]);
+              if(!teamA || !teamB) return;
+              
+              const match = simulateBo3Match(teamA, teamB, currentMeta);
+              const winner = updatedNatTeams.find(t => t.id === match.winnerId);
+              const loser = updatedNatTeams.find(t => t.id === match.loserId);
+              const tA = updatedNatTeams.find(t => t.id === teamA.id);
+              const tB = updatedNatTeams.find(t => t.id === teamB.id);
+              tA.match_count++; tB.match_count++;
+              tA.set_wins += match.setWinsA; tA.set_losses += match.setWinsB; tA.score_diff += (match.totalMomentumA - match.totalMomentumB);
+              tB.set_wins += match.setWinsB; tB.set_losses += match.setWinsA; tB.score_diff += (match.totalMomentumB - match.totalMomentumA);
+              winner.wins++; loser.losses++;
+              winner.elo += 10; loser.elo -= 10;
+              allMatchesThisPhase.push({ id: "NAT-MD" + subPhase + "-" + reg + "-" + groupName + "-" + teamA.abbr, phase: "MD" + subPhase, ...match });
+            });
+          });
+        });
+      });
+       
+      // ===== MEA Logic =====
+      if (activePhaseObj.id === 3) {
+        // P3: Stage 1 (MD 1~3) and Stage 2 (MD 5~7)
+        if (subPhase >= 1 && subPhase <= 3) {
+          // Stage 1: simulate 1~2 matches per MD from the 4 matchups
+          const unplayed = meaStage1.filter(m => !m.winnerId);
+          const toPlayCount = subPhase === 3 ? unplayed.length : Math.min(Math.ceil(4 / 3), unplayed.length);
+          const updatedS1 = [...meaStage1];
+          for (let k = 0; k < toPlayCount; k++) {
+            const idx = updatedS1.findIndex(m => !m.winnerId);
+            if (idx === -1) break;
+            const mu = updatedS1[idx];
+            const teamA = updatedNatTeams.find(t => t.id === mu.teamAId);
+            const teamB = updatedNatTeams.find(t => t.id === mu.teamBId);
+            if (teamA && teamB) {
+              const match = simulateBo5Match(teamA, teamB, currentMeta);
+              updatedS1[idx] = { ...mu, winnerId: match.winnerId, loserId: match.loserId, score: match.setWinsA + "-" + match.setWinsB };
+              allMatchesThisPhase.push({ id: "MEA-S1-" + subPhase + "-" + k, phase: "MEA 1차예선", ...match });
+            }
+          }
+          setMeaStage1(updatedS1);
+          
+          // After MD3, generate Stage 2 matchups if all stage1 done
+          if (subPhase === 3) {
+            const winners = updatedS1.filter(m => m.winnerId).map(m => m.winnerId);
+            const stage2Pool = [...meaTop12Ids, ...winners].sort(() => 0.5 - Math.random());
+            const s2Matchups = [];
+            for (let i = 0; i < stage2Pool.length; i += 2) {
+              if (stage2Pool[i+1]) {
+                s2Matchups.push({ teamAId: stage2Pool[i], teamBId: stage2Pool[i+1], winnerId: null, loserId: null, score: null });
+              }
+            }
+            setMeaStage2(s2Matchups);
+          }
+        } else if (subPhase >= 5 && subPhase <= 7) {
+          // Stage 2: simulate 2~3 matches per MD from the 8 matchups
+          const unplayed = meaStage2.filter(m => !m.winnerId);
+          const toPlayCount = subPhase === 7 ? unplayed.length : Math.min(3, unplayed.length);
+          const updatedS2 = [...meaStage2];
+          for (let k = 0; k < toPlayCount; k++) {
+            const idx = updatedS2.findIndex(m => !m.winnerId);
+            if (idx === -1) break;
+            const mu = updatedS2[idx];
+            const teamA = updatedNatTeams.find(t => t.id === mu.teamAId);
+            const teamB = updatedNatTeams.find(t => t.id === mu.teamBId);
+            if (teamA && teamB) {
+              const match = simulateBo5Match(teamA, teamB, currentMeta);
+              updatedS2[idx] = { ...mu, winnerId: match.winnerId, loserId: match.loserId, score: match.setWinsA + "-" + match.setWinsB };
+              allMatchesThisPhase.push({ id: "MEA-S2-" + subPhase + "-" + k, phase: "MEA 2차예선", ...match });
+            }
+          }
+          setMeaStage2(updatedS2);
+          
+          // After MD7, generate Final Stage: 8-team SINGLE ELIMINATION seeded bracket
+          if (subPhase === 7) {
+            const winners = updatedS2.filter(m => m.winnerId).map(m => m.winnerId);
+            // Sort by Elo for seeding
+            const seeded = winners.map(id => updatedNatTeams.find(t => t.id === id)).filter(Boolean).sort((a,b) => b.elo - a.elo);
+            // Bracket: 1v8, 4v5, 2v7, 3v6
+            if (seeded.length >= 8) {
+              const qf = [
+                { teamAId: seeded[0].id, teamBId: seeded[7].id, winnerId: null, loserId: null, score: null, round: 'QF' },
+                { teamAId: seeded[3].id, teamBId: seeded[4].id, winnerId: null, loserId: null, score: null, round: 'QF' },
+                { teamAId: seeded[1].id, teamBId: seeded[6].id, winnerId: null, loserId: null, score: null, round: 'QF' },
+                { teamAId: seeded[2].id, teamBId: seeded[5].id, winnerId: null, loserId: null, score: null, round: 'QF' }
+              ];
+              setMeaFinal(qf);
+            }
+          }
+        }
+      } else if (activePhaseObj.id === 8) {
+        // P8: Single Elimination Final Stage
+        const fin = JSON.parse(JSON.stringify(meaFinal));
+        
+        if (subPhase <= 2) {
+          // MD 1~2: Quarterfinals (4 matches)
+          const unplayed = fin.filter(m => m.round === 'QF' && !m.winnerId);
+          const toPlay = subPhase === 2 ? unplayed.length : Math.min(2, unplayed.length);
+          for (let k = 0; k < toPlay; k++) {
+            const idx = fin.findIndex(m => m.round === 'QF' && !m.winnerId);
+            if (idx === -1) break;
+            const mu = fin[idx];
+            const tA = updatedNatTeams.find(t => t.id === mu.teamAId);
+            const tB = updatedNatTeams.find(t => t.id === mu.teamBId);
+            if (tA && tB) {
+              const match = simulateBo5Match(tA, tB, currentMeta);
+              fin[idx] = { ...mu, winnerId: match.winnerId, loserId: match.loserId, score: match.setWinsA + "-" + match.setWinsB };
+              allMatchesThisPhase.push({ id: "MEA-QF-" + subPhase + "-" + k, phase: "MEA 8강", ...match });
+            }
+          }
+          
+          // After QF done, generate SF
+          if (subPhase === 2) {
+            const qfDone = fin.filter(m => m.round === 'QF' && m.winnerId);
+            if (qfDone.length >= 4) {
+              // SF: QF1 winner vs QF2 winner, QF3 winner vs QF4 winner
+              fin.push({ teamAId: qfDone[0].winnerId, teamBId: qfDone[1].winnerId, winnerId: null, loserId: null, score: null, round: 'SF' });
+              fin.push({ teamAId: qfDone[2].winnerId, teamBId: qfDone[3].winnerId, winnerId: null, loserId: null, score: null, round: 'SF' });
+            }
+          }
+        } else if (subPhase === 3 || subPhase === 4) {
+          // MD 3~4: Semifinals
+          const unplayed = fin.filter(m => m.round === 'SF' && !m.winnerId);
+          if (unplayed.length > 0) {
+            const idx = fin.findIndex(m => m.round === 'SF' && !m.winnerId);
+            const mu = fin[idx];
+            const tA = updatedNatTeams.find(t => t.id === mu.teamAId);
+            const tB = updatedNatTeams.find(t => t.id === mu.teamBId);
+            if (tA && tB) {
+              const match = simulateBo5Match(tA, tB, currentMeta);
+              fin[idx] = { ...mu, winnerId: match.winnerId, loserId: match.loserId, score: match.setWinsA + "-" + match.setWinsB };
+              allMatchesThisPhase.push({ id: "MEA-SF-" + subPhase, phase: "MEA 4강", ...match });
+            }
+          }
+          
+          // After both SF done, generate Final
+          if (subPhase === 4) {
+            const sfDone = fin.filter(m => m.round === 'SF' && m.winnerId);
+            if (sfDone.length >= 2) {
+              fin.push({ teamAId: sfDone[0].winnerId, teamBId: sfDone[1].winnerId, winnerId: null, loserId: null, score: null, round: 'F' });
+            }
+          }
+        } else if (subPhase === 5) {
+          // MD 5: Final
+          const idx = fin.findIndex(m => m.round === 'F' && !m.winnerId);
+          if (idx !== -1) {
+            const mu = fin[idx];
+            const tA = updatedNatTeams.find(t => t.id === mu.teamAId);
+            const tB = updatedNatTeams.find(t => t.id === mu.teamBId);
+            if (tA && tB) {
+              const match = simulateBo5Match(tA, tB, currentMeta);
+              fin[idx] = { ...mu, winnerId: match.winnerId, loserId: match.loserId, score: match.setWinsA + "-" + match.setWinsB };
+              allMatchesThisPhase.push({ id: "MEA-F-5", phase: "MEA 결승", ...match });
+            }
+          }
+        }
+        // MD 6~7: no MEA matches (already done by MD5)
+        
+        setMeaFinal(fin);
+      }
+    } else {
+      newNews.push({ id: Math.random(), text: "[시스템] " + activePhaseObj.name + " 진행 완료.", type: "info" });
+    }
+
+    setHistory(prev => [[...allMatchesThisPhase], ...prev].slice(0, 10));
+    newNews.slice(0, 5).forEach(n => setNews(prev => [n, ...prev].slice(0, 15)));
+    setTeams(updatedTeams);
+    setNatTeams(updatedNatTeams);
+    
+    setIsPhaseCompleted(true);
+  };
+
+  const toggleFavorite = (id) => setFavorites(prev => prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]);
+
+  const currentPhaseObj = PHASES[phaseIdx];
+  const isNatDetailed = currentPhaseObj.type === "NAT_DETAILED" || currentPhaseObj.type === "IQ_DETAILED";
+  
+  const phaseLabel = isNatDetailed
+    ? currentPhaseObj.name + " (MD " + subPhase + "/" + currentPhaseObj.maxSubPhase + ")"
+    : currentPhaseObj.name;
+  
+  let buttonLabel = "";
+  if (isPhaseCompleted) {
+     if (isNatDetailed && subPhase < currentPhaseObj.maxSubPhase) buttonLabel = "매치데이 " + (subPhase+1) + " 진입";
+     else buttonLabel = "다음 페이즈 진입";
+  } else {
+     if (isNatDetailed) buttonLabel = "진행 (Matchday " + subPhase + " 연산)";
+     else buttonLabel = "진행 (" + currentPhaseObj.name + " 연산)";
+  }
+
+  const btnClass = isPhaseCompleted 
+    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white' 
+    : isNatDetailed 
+      ? 'bg-gradient-to-r from-pink-600 to-orange-600 hover:from-pink-500 hover:to-orange-500 text-white' 
+      : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white';
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-200 font-sans overflow-hidden flex flex-col relative">
+      <div className="fixed inset-0 w-full h-[500px] bg-gradient-to-br from-indigo-900/20 to-purple-900/10 blur-3xl pointer-events-none" />
+      
+      <GNB activeTab={activeTab} setActiveTab={setActiveTab} />
+
+      <div className="w-full bg-slate-900/40 border-b border-white/5 relative z-40">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <div className="flex flex-col">
+              <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Current Meta</span>
+              <span className="text-sm font-black text-emerald-400">{currentMeta.join(', ')}</span>
+            </div>
+            <div className="w-px h-8 bg-white/10 hidden sm:block" />
+            <div className="flex flex-col">
+              <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Timeline</span>
+              <span className="text-sm font-black text-white flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-indigo-400" /> {phaseLabel}
+                {isPhaseCompleted && <CheckCircle2 className="w-4 h-4 text-green-400 ml-2" />}
+              </span>
+            </div>
+          </div>
+          <button 
+            onClick={processTransition}
+            disabled={phaseIdx >= 16}
+            className={"px-6 py-2 rounded-xl font-bold flex items-center gap-2 transition-all transform hover:scale-105 shadow-[0_0_20px_rgba(79,70,229,0.3)] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed " + btnClass}
+          >
+            {isPhaseCompleted ? <ArrowRight className="w-4 h-4" /> : <Play className="w-4 h-4" />} {buttonLabel}
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto relative z-10">
+        <div className="max-w-7xl mx-auto p-6">
+          {activeTab === 'club' && <ClubView teams={teams} selectedLeague={selectedLeague} setSelectedLeague={setSelectedLeague} LEAGUES={LEAGUES} favorites={favorites} toggleFavorite={toggleFavorite} news={news} history={history} setSelectedMatch={setSelectedMatch} eloHistory={eloHistory} visibleGraphTeams={visibleGraphTeams} setVisibleGraphTeams={setVisibleGraphTeams} />}
+          {activeTab === 'national' && <NationalView natTeams={natTeams} natGroups={natGroups} meaStage1={meaStage1} meaStage2={meaStage2} meaFinal={meaFinal} iqMatchups={iqMatchups} />}
+          {activeTab === 'clubRank' && <RankingView title="글로벌 클럽 랭킹" type="club" teams={teams} icon={null} />}
+          {activeTab === 'natRank' && <RankingView title="글로벌 국가대표 랭킹" type="national" teams={natTeams} icon={null} />}
+          {activeTab === 'coeff' && <LeagueCoefficientsView />}
+          {activeTab === 'info' && <InfoView seasonHistory={seasonHistory} />}
+          {/* Scaffolded placeholder views */}
+          {['continental_emea', 'continental_apac', 'continental_amer'].includes(activeTab) && (
+            <div className="flex flex-col items-center justify-center h-[60vh] text-slate-500 gap-4 bg-slate-900/40 rounded-2xl border border-slate-800">
+              <div className="w-16 h-16 rounded-2xl bg-indigo-900/30 flex items-center justify-center"><Calendar className="w-8 h-8 text-indigo-400" /></div>
+              <p className="text-xl font-black text-white">대륙 대회: {activeTab.replace('continental_', '').toUpperCase()}</p>
+              <p className="text-sm text-slate-400">이 기능은 향후 구현될 예정입니다.</p>
+            </div>
+          )}
+          {['intl_mm', 'intl_wm', 'intl_vsc', 'intl_we'].includes(activeTab) && (
+            <div className="flex flex-col items-center justify-center h-[60vh] text-slate-500 gap-4 bg-slate-900/40 rounded-2xl border border-slate-800">
+              <div className="w-16 h-16 rounded-2xl bg-purple-900/30 flex items-center justify-center"><Calendar className="w-8 h-8 text-purple-400" /></div>
+              <p className="text-xl font-black text-white">국제대회: {activeTab.replace('intl_', '').toUpperCase()}</p>
+              <p className="text-sm text-slate-400">이 기능은 향후 구현될 예정입니다.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
